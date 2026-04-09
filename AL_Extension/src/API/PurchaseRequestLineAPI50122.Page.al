@@ -19,7 +19,7 @@ page 50122 "PurchaseRequestLineAPI"
             {
                 // Identifiants techniques
                 field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
-                field(documentNo; Rec."Document No.") { Caption = 'N° Document'; Editable = false; }
+                field(documentNo; Rec."Document No.") { Caption = 'N° Document'; Editable = true; }
                 field(lineNo; Rec."Line No.") { Caption = 'N° Ligne'; Editable = false; }
                 
                 // Champs de la Page 50322 (Repeater)
@@ -32,8 +32,24 @@ page 50122 "PurchaseRequestLineAPI"
                 field(unitOfMeasureCode; Rec."Unit of Measure Code") { Caption = 'Code Unité'; }
                 field(locationCode; Rec."Location Code") { Caption = 'Code Magasin'; }
                 field(variantCode; Rec."Variant Code") { Caption = 'Code Variante'; }
-                field(jobNo; Rec."Job No.") { Caption = 'N° Projet'; }
-                field(jobTaskNo; Rec."Job Task No.") { Caption = 'N° Tâche Projet'; }
+                // field(jobNo; Rec."Job No.") { Caption = 'N° Projet'; }
+               // On utilise des variables au lieu des champs directs pour la partie Projet
+            field(jobNo; GlobalJobNo) 
+            { 
+                Caption = 'Project No.';
+                trigger OnValidate()
+                begin
+                    // On ne fait rien ici, on attend l'insertion
+                end;
+            }
+            field(jobTaskNo; GlobalJobTaskNo) 
+            { 
+                Caption = 'Project Task No.';
+                trigger OnValidate()
+                begin
+                    // On ne fait rien ici non plus
+                end;
+            }
                 field(engin; Rec.Engin) { Caption = 'Code Engin'; }
 
                 // Champs de table très utiles pour le Web (Aide à la décision)
@@ -41,4 +57,19 @@ page 50122 "PurchaseRequestLineAPI"
             }
         }
     }
+   var
+    GlobalJobNo: Code[20];
+    GlobalJobTaskNo: Code[20];
+
+trigger OnInsertRecord(BelowxRec: Boolean): Boolean
+begin
+    // ICI, on contrôle l'ordre de validation manuellement
+    if GlobalJobNo <> '' then
+        Rec.Validate("Job No.", GlobalJobNo);
+        
+    if GlobalJobTaskNo <> '' then
+        Rec.Validate("Job Task No.", GlobalJobTaskNo);
+        
+    exit(true);
+end;
 }

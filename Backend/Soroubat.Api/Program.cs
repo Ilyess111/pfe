@@ -4,65 +4,51 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// --- 1. RÉCUPÉRATION DE LA CONFIGURATION ---
-// On extrait les valeurs une seule fois ici pour qu'elles soient 
-// accessibles dans tout le fichier.
 var bcConfig = builder.Configuration.GetSection("BusinessCentral");
-string baseUrl = bcConfig.GetValue<string>("BaseUrl") ?? "";
+string rawUrl = bcConfig.GetValue<string>("BaseUrl") ?? "";
+
+// FORCE le nettoyage : on ne garde que jusqu'à l'instance (ex: BC240)
+// Cette ligne va supprimer tout ce qui dépasse après le nom de l'instance si tu l'as mis par erreur
+string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
+
 string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV";
 
-// On prépare l'URL complète avec la société (Méthode par Nom car vos IDs sont à zéro)
-string fullUri = $"{baseUrl.TrimEnd('/')}/companies(name='{Uri.EscapeDataString(companyName)}')/";
+// --- 2. CONSTRUCTION DES TUNNELS ---
+// Pour les Services de gestion
+string apiUri = $"{baseUrl}/api/soroubat/siteManagement/v1.0/companies(name='{Uri.EscapeDataString(companyName)}')/";
 
-// --- 2. CONFIGURATION DES SERVICES ---
+// Pour les Lookups (Services Web OData)
+string odataUri = $"{baseUrl}/ODataV4/Company('{Uri.EscapeDataString(companyName)}')/";
 
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
-    });
+// --- 3. SERVICES ---
+builder.Services.AddControllers().AddJsonOptions(options => {
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Configuration du premier service
-builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(client =>
-{
-    // Maintenant 'fullUri' est bien reconnu ici
-    client.BaseAddress = new Uri(fullUri); 
+builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(client => {
+    client.BaseAddress = new Uri(apiUri);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(client => {
+    client.BaseAddress = new Uri(apiUri);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+// ON FORCE UN CLIENT DIFFÉRENT POUR LE LOOKUP
+builder.Services.AddHttpClient<ILookupService, LookupService>(client => {
+    client.BaseAddress = new Uri(odataUri); 
 })
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler 
-{
-    UseDefaultCredentials = true,
-    AllowAutoRedirect = true
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { 
+    UseDefaultCredentials = true 
 });
 
-// Configuration du deuxième service
-builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(client => 
-{
-    // 'fullUri' est aussi reconnu ici
-    client.BaseAddress = new Uri(fullUri); 
-})
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-{
-    UseDefaultCredentials = true,
-    AllowAutoRedirect = true
-});
-
-// Configuration CORS pour autoriser Angular
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAngular", 
-        policy => policy.WithOrigins("http://localhost:4200")
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .AllowCredentials()); // ← Important pour l'authentification
-});
+builder.Services.AddCors(opt => opt.AddPolicy("AllowAngular", p => 
+    p.WithOrigins("http://localhost:4200").AllowAnyMethod().AllowAnyHeader().AllowCredentials()));
 
 var app = builder.Build();
 
-// --- 2. PIPELINE HTTP ---
 
 if (app.Environment.IsDevelopment())
 {
@@ -70,14 +56,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Ordre correct
+
 app.UseCors("AllowAngular");
-// app.UseHttpsRedirection(); // Désactivé en dev
 app.UseAuthorization();
 app.MapControllers();
 
 // Afficher l'URL de démarrage
 Console.WriteLine("🚀 Backend démarré sur http://localhost:5227");
 Console.WriteLine("📚 Swagger disponible sur http://localhost:5227/swagger");
+
 
 app.Run();

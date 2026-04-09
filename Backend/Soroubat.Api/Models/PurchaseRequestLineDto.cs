@@ -6,6 +6,7 @@ namespace Soroubat.Api.Models
 {
     public class PurchaseRequestLineDto
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
         [JsonPropertyName("id")]
         public Guid? Id { get; set; }
 
@@ -13,7 +14,7 @@ namespace Soroubat.Api.Models
         public string? DocumentNo { get; set; }
 
         [JsonPropertyName("lineNo")]
-        public int LineNo { get; set; }
+        public int? LineNo { get; set; }
 
         [JsonPropertyName("transferer")]
         public bool Transferer { get; set; } 
@@ -25,33 +26,35 @@ namespace Soroubat.Api.Models
         public string? No { get; set; }
 
         [JsonPropertyName("description")]
-        public string Description { get; set; }
+        public string? Description { get; set; }
 
         [JsonPropertyName("description2")]
-        public string Description2 { get; set; }
+        public string? Description2 { get; set; }
 
         [JsonPropertyName("quantity")]
         public decimal Quantity { get; set; }
 
         [JsonPropertyName("unitOfMeasureCode")]
-        public string UnitOfMeasureCode { get; set; }
+        public string? UnitOfMeasureCode { get; set; }
 
         [JsonPropertyName("locationCode")]
-        public string LocationCode { get; set; }
+        public string? LocationCode { get; set; }
 
         [JsonPropertyName("variantCode")]
         public string? VariantCode { get; set; }
 
+        // [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("jobNo")]
-        public string JobNo { get; set; }
+        public string? JobNo { get; set; }
 
         [JsonPropertyName("jobTaskNo")]
         public string JobTaskNo { get; set; }
 
         [JsonPropertyName("engin")]
-        public string Engin { get; set; }
+        public string? Engin { get; set; }
 
         [JsonPropertyName("lineAmount")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
         public decimal LineAmount { get; set; }
     }
 }

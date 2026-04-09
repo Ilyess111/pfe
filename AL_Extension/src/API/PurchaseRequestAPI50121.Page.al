@@ -27,12 +27,8 @@ page 50121 "PurchaseRequestAPI"
                 field(requesterId; Rec."Requester ID") { Caption = 'Demandeur'; }
                 field(requestType; Rec."Request Type") { Caption = 'Type de demande'; }
                 field(engin; Rec.Engin) { Caption = 'Code Engin'; }
-                // field(descriptionEngin; Rec."Description Engin") { Caption = 'Désignation Engin'; }
-                field(descriptionEngin; Rec."Description Engin")
-                {
-                    Caption = 'Désignation Engin';
-                    Editable = false;  //  on précise explicitement que ce champ est lecture seule dans l'API
-                }
+                field(descriptionEngin; Rec."Description Engin") { Caption = 'Désignation Engin'; }
+                
                 field(orderDate; Rec."Order Date") { Caption = 'Date Commande'; }
                 field(dueDate; Rec."Due Date") { Caption = 'Date d''échéance'; }
                 field(status; Rec.Status) { Caption = 'Statut'; }

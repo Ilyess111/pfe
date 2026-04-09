@@ -4,16 +4,20 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
+using Microsoft.Extensions.Logging;
 
 namespace Soroubat.Api.Services 
 {
     public class PurchaseRequestService :  BaseService, IPurchaseRequestService 
     {
         private readonly HttpClient _httpClient;
+        private readonly ILogger<PurchaseRequestService> _logger;
 
-        public PurchaseRequestService(HttpClient httpClient)
+
+        public PurchaseRequestService(HttpClient httpClient , ILogger<PurchaseRequestService> logger)
         {
             _httpClient = httpClient;
+            _logger = logger;
         }
 
         // --- MÉTHODES EN-TÊTE (HEADER) ---
@@ -56,94 +60,51 @@ namespace Soroubat.Api.Services
             return result; // on n'utilise pas .Value ici car on s'attend à un objet unique (comme racine ) et pas à une liste
         }
 
-        // public async Task<PurchaseRequestDto> CreateFullRequestAsync(PurchaseRequestDto request)
-        //{
-           //var response = await _httpClient.PostAsJsonAsync("purchaseRequests", request);
-            //if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
+// 1. Création du Header uniquement
+        public async Task<PurchaseRequestDto> CreateHeaderAsync(PurchaseRequestDto header)
+        {
+            // On s'assure que les lignes sont nulles pour ne pas déclencher le deep insert de BC
+            header.PurchaseRequestLines = null;
+
+            var response = await _httpClient.PostAsJsonAsync("purchaseRequests", header);
+            if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
             
-           // var result = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-            // if (result == null) throw new Exception("La demande a été créée mais la réponse est illisible.");
+            return await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+        }
+
+        // 2. Création d'une ligne individuelle
+        public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines)
+        {
+            if (lines == null || !lines.Any()) return false;
+
+            bool globalSuccess = true;
             
-            //return result; // on retourne result ici pour s'assurer que le client reçoit bien toutes les données de la demande créée, y compris l'id généré par BC et les lignes associées si elles ont été créées en même temps
-       // }
+            // ÉTAPE 1 : Récupérer dynamiquement le dernier numéro en base
+            string docNo = lines.First().DocumentNo;
+            int lastLineNo = await GetLastLineNoAsync(docNo);
+            
+            // ÉTAPE 2 : Commencer l'incrément après le dernier numéro trouvé
+            int nextLineNo = lastLineNo + 10000;
 
-       // Note : la méthode CreateFullRequestAsync a un probléme au niveau de ID lors de l'envoie request tel quel à Business Central avec ID.Request = NULL car il n'est pas génerer automatiquement par BC et il est requis pour la création d'une demande d'achat.
-
-       // la nouvelle méthode CreateFullRequestAsync génère un nouvel ID pour la demande d'achat avant de l'envoyer à Business Central, ce qui permet de contourner le problème de l'ID requis et de s'assurer que la demande est créée correctement avec un identifiant unique.
-
-
-
-                public async Task<PurchaseRequestDto> CreateFullRequestAsync(PurchaseRequestDto request)
+            foreach (var line in lines)
+            {
+                line.LineNo = nextLineNo;
+                
+                var response = await _httpClient.PostAsJsonAsync("purchaseRequestLines", line);
+                
+                if (response.IsSuccessStatusCode)
                 {
-                    // 1️ Générer un ID pour l'en-tête si absent
-                    if (request.Id == null || request.Id == Guid.Empty)
-                        request.Id = Guid.NewGuid();
-
-                    // 2️ Préparer le header à envoyer (sans les lignes, car BC ne les accepte pas ici)
-                    var header = new
-                    {
-                        request.Id,
-                        request.JobNo,
-                        request.RequestType,
-                        request.Service,
-                        request.Engin,
-                        //request.DescriptionEngin,
-                        request.OrderDate,
-                        request.DueDate,
-                        request.Status,
-                        //request.Amount,
-                        request.RequesterId
-                    };
-
-                    // 3️ POST de l'en-tête
-                    var responseHeader = await _httpClient.PostAsJsonAsync("purchaseRequests", header);
-                    if (!responseHeader.IsSuccessStatusCode)
-                        await HandleErrorResponse(responseHeader);
-
-                    var createdHeader = await responseHeader.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-                    if (createdHeader == null)
-                        throw new Exception("La demande a été créée mais la réponse de l'en-tête est illisible.");
-
-                    // 4️ Créer chaque ligne avec un ID et lier au header
-                    foreach (var line in request.PurchaseRequestLines)
-                    {
-                        if (line.Id == null || line.Id == Guid.Empty)
-                            line.Id = Guid.NewGuid();
-
-                        // S'assurer que la ligne référence le bon PurchaseRequestId
-                        var lineToSend = new
-                        {
-                            line.Id,
-                            DocumentNo = createdHeader.Id, // ID de l'en-tête comme référence
-                            line.LineNo,
-                            line.Transferer,
-                            line.Type,
-                            line.No,
-                            line.Description,
-                            line.Description2,
-                            line.Quantity,
-                            line.UnitOfMeasureCode,
-                            line.LocationCode,
-                            line.VariantCode,
-                            line.JobNo,
-                            line.JobTaskNo,
-                            line.Engin,
-                            line.LineAmount
-                        };
-
-                        var responseLine = await _httpClient.PostAsJsonAsync("purchaseRequestLines", lineToSend);
-                        if (!responseLine.IsSuccessStatusCode)
-                            await HandleErrorResponse(responseLine);
-                    }
-
-                    // 5️ Récupérer la demande complète avec les lignes pour retourner au client
-                    var fullRequest = await GetRequestByIdAsync(createdHeader.Id.Value);
-                    return fullRequest;
+                    nextLineNo += 10000;
                 }
-
-
-
-
+                else
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError($"Erreur ligne {line.No}: {error}");
+                    globalSuccess = false;
+                }
+            }
+            return globalSuccess;
+        }
 
         public async Task<bool> UpdateHeaderAsync(Guid id, object partialUpdate)
         {
@@ -189,7 +150,7 @@ namespace Soroubat.Api.Services
 
         // ce que fait exactement cette méthode : elle lit le contenu de la réponse d'erreur de BC, 
         // essaie de le désérialiser en un objet BCResponseError pour extraire le message d'erreur spécifique de BC, et si la désérialisation échoue (par exemple si le format de l'erreur n'est pas celui attendu), elle lance une exception générique avec le code d'état HTTP et le contenu brut de l'erreur
-        private async Task HandleErrorResponse(HttpResponseMessage response)
+        private new async Task HandleErrorResponse(HttpResponseMessage response)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
             try {
@@ -198,6 +159,30 @@ namespace Soroubat.Api.Services
             } catch (JsonException) {
                 throw new Exception($"Réponse de Business Central illisible (Format JSON invalide). Code HTTP {(int)response.StatusCode}. Contenu brut : {errorContent}");
             }
+    
         }
+
+        private async Task<int> GetLastLineNoAsync(string documentNo)
+        {
+            // On appelle BC pour avoir la dernière ligne de ce document précis
+            // On trie par LineNo descendant et on en prend 1 ($top=1)
+            var response = await _httpClient.GetAsync($"purchaseRequestLines?$filter=documentNo eq '{documentNo}'&$orderby=lineNo desc&$top=1");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(content);
+                var root = doc.RootElement.GetProperty("value");
+
+                if (root.GetArrayLength() > 0)
+                {
+                    return root[0].GetProperty("lineNo").GetInt32();
+                }
+            }
+            return 0; // Si aucune ligne n'existe, on commence à 0
+        }
+
+
     }
+
 }

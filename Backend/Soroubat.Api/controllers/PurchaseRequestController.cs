@@ -45,15 +45,46 @@ namespace Soroubat.Api.Controllers
             }
         }
 
+
         [HttpPost]
-        public async Task<ActionResult<PurchaseRequestDto>> Create([FromBody] PurchaseRequestDto request)
+        public async Task<ActionResult<PurchaseRequestDto>> CreateHeader([FromBody] PurchaseRequestDto request)
         {
             try 
             {
-                var result = await _service.CreateFullRequestAsync(request);
-                return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+                // On appelle la nouvelle méthode spécifique au Header
+                var result = await _service.CreateHeaderAsync(request);
+                
+                if (result.Id == null || result.Id == Guid.Empty)
+                    return StatusCode(201, result); 
+                else
+                    return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
             } 
             catch (Exception ex) 
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+
+        [HttpPost("lines")]
+        public async Task<ActionResult> CreateLines([FromBody] List<PurchaseRequestLineDto> lines)
+        {
+            if (lines == null || !lines.Any())
+            {
+                return BadRequest("La liste des lignes est vide.");
+            }
+
+            try 
+            {
+                // On appelle une méthode qui va gérer la collection
+                var result = await _service.CreateLinesAsync(lines);
+                
+                if (result) 
+                    return Ok(new { message = $"{lines.Count} ligne(s) créée(s) avec succès" });
+                
+                return BadRequest("Échec lors de la création de certaines lignes");
+            }
+            catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
