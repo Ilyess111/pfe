@@ -50,7 +50,6 @@ namespace Soroubat.Api.Models
 
         // Navigation property pour le Deep Insert
         [JsonPropertyName("purchaseRequestLines")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
         public List<PurchaseRequestLineDto> PurchaseRequestLines { get; set; } = new();
     }
 }

@@ -10,7 +10,6 @@ string rawUrl = bcConfig.GetValue<string>("BaseUrl") ?? "";
 // FORCE le nettoyage : on ne garde que jusqu'à l'instance (ex: BC240)
 // Cette ligne va supprimer tout ce qui dépasse après le nom de l'instance si tu l'as mis par erreur
 string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
-
 string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV";
 
 // --- 2. CONSTRUCTION DES TUNNELS ---

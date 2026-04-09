@@ -91,8 +91,6 @@ namespace Soroubat.Api.Controllers
         }
 
         [HttpPatch("{id}")]
-        // en utilisant JsonElement , angular sera chargé de construire le corps de la requête de mise à jour partielle en format JSON et de l'envoyer tel quel au backend, qui pourra ensuite le traiter dynamiquement sans avoir besoin d'une classe spécifique pour chaque type de mise à jour.
-        // L'attribut [FromBody] dit à .NET : "Va chercher le texte dans le corps de la requête et essaie de le faire entrer dans le paramètre que j'ai défini (le JsonElement ou le Dto spécifique)". 
         public async Task<IActionResult> PatchHeader(Guid id, [FromBody] JsonElement body) 
         {
             try 
@@ -113,7 +111,7 @@ namespace Soroubat.Api.Controllers
             try 
             {
                 var success = await _service.DeleteRequestAsync(id);
-                if (success) return NoContent();
+                if (success) return NoContent(); // Succès 204
                 return BadRequest("Impossible de supprimer la demande");
             }
             catch (Exception ex)
@@ -145,7 +143,7 @@ namespace Soroubat.Api.Controllers
             try 
             {
                 var success = await _service.DeleteLineAsync(id);
-                if (success) return NoContent();
+                if (success) return NoContent(); // Succès 204
                 return BadRequest("Impossible de supprimer la ligne.");
             }
             catch (Exception ex)

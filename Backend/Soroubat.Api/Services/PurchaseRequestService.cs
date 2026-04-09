@@ -46,18 +46,38 @@ namespace Soroubat.Api.Services
 
         public async Task<PurchaseRequestDto> GetRequestByIdAsync(Guid id)
         {   
-            // on utilise expand au lieu de filter pour récupérer de plus les informations sur la demande d'achat .
-            var response = await _httpClient.GetAsync($"purchaseRequests({id})?$expand=purchaseRequestLines");
-            if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
-
-            var result = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+            // 1. Récupérer l'en-tête (Header) par son identifiant unique
+            var headerResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
             
-            if (result == null)
+            if (!headerResponse.IsSuccessStatusCode) 
+                await HandleErrorResponse(headerResponse);
+
+            var header = await headerResponse.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+            
+            if (header == null)
             {
                 throw new Exception("La demande d'achat est vide ou n'a pas pu être lue.");
             }
 
-            return result; // on n'utilise pas .Value ici car on s'attend à un objet unique (comme racine ) et pas à une liste
+            // 2. Récupérer les lignes (Lines) associées au numéro de document (no)
+            // Nous filtrons sur 'documentNo' qui est la clé étrangère dans les lignes
+            if (!string.IsNullOrEmpty(header.No))
+            {
+                var linesResponse = await _httpClient.GetAsync($"purchaseRequestLines?$filter=documentNo eq '{header.No}'");
+                
+                if (linesResponse.IsSuccessStatusCode)
+                {
+                    var linesResult = await linesResponse.Content.ReadFromJsonAsync<BCResponse<PurchaseRequestLineDto>>();
+                    
+                    // 3. Injecter les lignes dans l'objet Header
+                    if (linesResult?.Value != null)
+                    {
+                        header.PurchaseRequestLines = linesResult.Value.ToList();
+                    }
+                }
+            }
+
+            return header;
         }
 
 // 1. Création du Header uniquement
@@ -111,9 +131,9 @@ namespace Soroubat.Api.Services
             var url = $"purchaseRequests({id})";
             return await SendPatchRequest(url, partialUpdate);
         }
-
         public async Task<bool> DeleteRequestAsync(Guid id)
         {
+            // Cible l'entité purchaseRequests. BC se charge de nettoyer les lignes.
             var response = await _httpClient.DeleteAsync($"purchaseRequests({id})");
             if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
             return response.IsSuccessStatusCode;
@@ -129,6 +149,7 @@ namespace Soroubat.Api.Services
 
         public async Task<bool> DeleteLineAsync(Guid lineId)
         {
+            // Cible l'entité purchaseRequestLines. Seule cette ligne disparaît.
             var response = await _httpClient.DeleteAsync($"purchaseRequestLines({lineId})");
             if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
             return response.IsSuccessStatusCode;
@@ -140,11 +161,17 @@ namespace Soroubat.Api.Services
         {
             var json = JsonSerializer.Serialize(body);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
+            
             var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
+            
+            // Obligatoire pour Business Central (OData) lors d'un PATCH
             request.Headers.Add("If-Match", "*"); 
 
             var response = await _httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
+            
+            if (!response.IsSuccessStatusCode) 
+                await HandleErrorResponse(response);
+                
             return response.IsSuccessStatusCode;
         }
 
