@@ -7,12 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 var bcConfig = builder.Configuration.GetSection("BusinessCentral");
 string rawUrl = bcConfig.GetValue<string>("BaseUrl") ?? "";
 
-// FORCE le nettoyage : on ne garde que jusqu'à l'instance (ex: BC240)
-// Cette ligne va supprimer tout ce qui dépasse après le nom de l'instance si tu l'as mis par erreur
 string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
 string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV";
 
-// --- 2. CONSTRUCTION DES TUNNELS ---
 // Pour les Services de gestion
 string apiUri = $"{baseUrl}/api/soroubat/siteManagement/v1.0/companies(name='{Uri.EscapeDataString(companyName)}')/";
 
@@ -32,6 +29,11 @@ builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(cl
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(client => {
+    client.BaseAddress = new Uri(apiUri);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<ITransferService, TransferService>(client =>
+{
     client.BaseAddress = new Uri(apiUri);
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 

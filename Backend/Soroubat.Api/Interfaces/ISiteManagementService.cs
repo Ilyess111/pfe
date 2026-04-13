@@ -9,8 +9,7 @@ namespace Soroubat.Api.Interfaces
         Task<List<JobDto>> GetAllJobsAsync(); 
 
         // récupère les tâches d'un chantier spécifique
-        Task<List<JobTaskDto>> GetTasksByJobAsync(string jobNo); 
-
+        Task<List<JobTaskDto>> GetTasksByJobAsync(Guid jobId);
         // met à jour le progrès d'une tâche spécifique
         Task<bool> UpdateTaskProgressAsync(Guid id, decimal progress); 
     }

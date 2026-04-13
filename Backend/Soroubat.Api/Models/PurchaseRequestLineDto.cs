@@ -6,7 +6,7 @@ namespace Soroubat.Api.Models
 {
     public class PurchaseRequestLineDto
     {
-        [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("id")]
         public Guid? Id { get; set; }
 
@@ -54,7 +54,7 @@ namespace Soroubat.Api.Models
         public string? Engin { get; set; }
 
         [JsonPropertyName("lineAmount")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal LineAmount { get; set; }
     }
 }

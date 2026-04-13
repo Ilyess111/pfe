@@ -20,6 +20,7 @@ page 50122 "PurchaseRequestLineAPI"
                 // Identifiants techniques
                 field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
                 field(documentNo; Rec."Document No.") { Caption = 'N° Document'; Editable = true; }
+                // field(documentId; Rec."Document Id") { Caption = 'Document Id';Editable = false; }
                 field(lineNo; Rec."Line No.") { Caption = 'N° Ligne'; Editable = false; }
                 
                 // Champs de la Page 50322 (Repeater)
@@ -61,15 +62,15 @@ page 50122 "PurchaseRequestLineAPI"
     GlobalJobNo: Code[20];
     GlobalJobTaskNo: Code[20];
 
-trigger OnInsertRecord(BelowxRec: Boolean): Boolean
-begin
-    // ICI, on contrôle l'ordre de validation manuellement
-    if GlobalJobNo <> '' then
-        Rec.Validate("Job No.", GlobalJobNo);
-        
-    if GlobalJobTaskNo <> '' then
-        Rec.Validate("Job Task No.", GlobalJobTaskNo);
-        
-    exit(true);
-end;
+    trigger OnInsertRecord(BelowxRec: Boolean): Boolean
+    begin
+        // ICI, on contrôle l'ordre de validation manuellement
+        if GlobalJobNo <> '' then
+            Rec.Validate("Job No.", GlobalJobNo);
+            
+        if GlobalJobTaskNo <> '' then
+            Rec.Validate("Job Task No.", GlobalJobTaskNo);
+            
+        exit(true);
+    end;
 }

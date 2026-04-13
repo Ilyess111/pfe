@@ -36,25 +36,29 @@ namespace Soroubat.Api.Services
             return data.Value;
         }
 
-        public async Task<List<JobTaskDto>> GetTasksByJobAsync(string jobNo) // le paramétre jobNo sera passé dans l'url.
+        public async Task<List<JobTaskDto>> GetTasksByJobAsync(Guid jobId) 
         {
-            // Filtrage OData pour ne récupérer que les tâches d'un chantier précis
-            // exemple de url : http://localhost:7048/BC240/api/soroubat/siteManagement/v1.0/jobTasks?$filter=jobNo eq 'DESCHAMPS, 8 ET' 
-            // un filter est utilisé ici ( pas un expand ) car on n'a pas besoin d'obtenir toutes les infos du job 
-            var response = await _httpClient.GetAsync($"jobTasks?$filter=jobNo eq '{jobNo}'"); 
+            // ÉTAPE 1 : Récupérer le Job pour obtenir son No (identifiant lisible)
+            var jobResponse = await _httpClient.GetAsync($"jobs({jobId})");
             
-            // si le filtre n'est pas spécifié, BC renverra toutes les tâches de tous les chantiers
-            if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
+            if (!jobResponse.IsSuccessStatusCode) 
+                await HandleErrorResponse(jobResponse);
+
+            var job = await jobResponse.Content.ReadFromJsonAsync<JobDto>();
+            
+            if (job == null || string.IsNullOrEmpty(job.No))
+                throw new Exception("Impossible de trouver le numéro de chantier associé à cet ID.");
+
+            // ÉTAPE 2 : Utiliser le JobNo récupéré pour filtrer les tâches
+            // On ajoute des quotes simples car jobNo est un string dans BC
+            var response = await _httpClient.GetAsync($"jobTasks?$filter=jobNo eq '{job.No}'"); 
+            
+            if (!response.IsSuccessStatusCode) 
+                await HandleErrorResponse(response);
 
             var data = await response.Content.ReadFromJsonAsync<BCResponse<JobTaskDto>>();
             
-            // Contrôle sur result : on vérifie que la désérialisation a fonctionné
-            if (data?.Value == null)
-            {
-                throw new Exception("Le format des données reçues pour les tâches est invalide.");
-            }
-
-            return data.Value;
+            return data?.Value ?? new List<JobTaskDto>();
         }
 
         public async Task<bool> UpdateTaskProgressAsync(Guid id, decimal progress)
@@ -85,15 +89,6 @@ namespace Soroubat.Api.Services
             return response.IsSuccessStatusCode;
         }
 
-        private async Task HandleErrorResponse(HttpResponseMessage response)
-        {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            try {
-                var bcError = JsonSerializer.Deserialize<BCResponseError>(errorContent);
-                throw new Exception(bcError?.Error?.Message ?? errorContent);
-            } catch (JsonException) {
-                throw new Exception($"Réponse de Business Central illisible (Format JSON invalide). Code HTTP {(int)response.StatusCode}. Contenu brut : {errorContent}");
-            }
-        }
+    
     }
 }

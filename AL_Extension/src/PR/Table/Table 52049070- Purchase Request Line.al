@@ -23,6 +23,13 @@ Table 52049070 "Purchase request Line"
             Caption = 'Document No.';
             TableRelation = "Purchase Request"."No." where("Document Type" = field("Document Type"));
         }
+        // field(50200; "Document Id"; Guid) 
+        // { 
+        //     Caption = 'Document Id';
+        //     DataClassification = CustomerContent;
+        //     TableRelation = "Purchase Request".SystemId;
+        // }
+
         field(4; "Line No."; Integer)
         {
             Caption = 'Line No.';

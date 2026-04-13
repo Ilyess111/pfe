@@ -38,9 +38,10 @@ page 50120 "JobTaskAPI"
                 field(dateDebut; Rec."Date Debut") { Caption = 'Date Debut'; }
                 field(dateFin; Rec."Date Fin") { Caption = 'Date Fin'; }
                 
-                // Pourcentages d'avancement saisis par les chefs de chantier
+                // ce champ permet au chef de chantier de saisir un pourcentage d'avancement global de la tâche, qui peut être différent du progress calculé automatiquement en fonction de la quantité réalisée (taskProgressPct)
                 field(progressPct; Rec."Progress %") { Caption = 'Progress %'; }
-                field(taskProgressPct; Rec."Task Progress %") { Caption = 'Task Progress %'; Editable = false;} // un champ d'avacement théorique calculé en fonction de la quantité réalisée vs la quantité initiale, pour comparer avec le progressPct saisi manuellement
+                // un champ d'avancement théorique calculé en fonction de la quantité réalisée vs la quantité initiale, pour comparer avec le progressPct saisi manuellement
+                field(taskProgressPct; Rec."Task Progress %") { Caption = 'Task Progress %'; Editable = false;} 
                 
                 // --- DONNÉES CALCULÉES & RÉALISÉ (Toujours en lecture seule) ---
                 // quantityShipped représente ce qui a été réellement consommé/réalisé (FlowField)

@@ -1,0 +1,54 @@
+page 50136 "TransferHeaderAPI"
+{
+    PageType = API;
+    Caption = 'transferHeader';
+    APIPublisher = 'soroubat';
+    APIGroup = 'siteManagement';
+    APIVersion = 'v1.0';
+    EntityName = 'transferHeader';
+    EntitySetName = 'transferHeaders';
+    SourceTable = "Transfer Header";
+    ODataKeyFields = SystemId;
+    DelayedInsert = true;
+
+    layout
+    {
+        area(Content)
+        {
+            repeater(GroupName)
+            {
+                field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
+                field(no; Rec."No.") { Caption = 'No.'; Editable = false; }
+                field(status; Rec.Status) { Caption = 'Status'; } // Ajouté
+                field(transferFromCode; Rec."Transfer-from Code") { Caption = 'Transfer-from Code'; }
+                field(transferToCode; Rec."Transfer-to Code") { Caption = 'Transfer-to Code'; }
+                field(inTransitCode; Rec."In-Transit Code") { Caption = 'In-Transit Code'; } // Utile pour BC
+                field(postingDate; Rec."Posting Date") { Caption = 'Posting Date'; }
+                
+                // Champs issus de Tab-Ext50880
+                field(observation; Rec.Observation) { Caption = 'Observation'; } 
+                field(chantierOrigine; Rec."Chantier Origine") { Caption = 'Chantier Origine'; } 
+                field(chantierDestination; Rec."Chantier Destination") { Caption = 'Chantier Destination'; } 
+                field(idExpediteur; Rec."Id Expediteur") { Caption = 'Id Expediteur'; } // Ajouté
+                field(idReceptionneur; Rec."Id Receptioneur") { Caption = 'Id Receptioneur'; } 
+                field(numMateriel; Rec."N° Materiel") { Caption = 'N° Materiel'; } 
+                field(numDemandeAchat; Rec."N° Demande Achat") { Caption = 'N° Demande Achat'; }
+
+                part(transferLines; "TransferLineAPI")
+                {
+                    Caption = 'Lines';
+                    EntityName = 'transferLine';
+                    EntitySetName = 'transferLines';
+                    SubPageLink = "Document No." = FIELD("No.");
+                }
+            }
+        }
+    }
+
+    trigger OnInsertRecord(BelowxRec: Boolean): Boolean
+    begin
+        if Rec."No." = '' then
+            Rec.Insert(true);
+        exit(false);
+    end;
+}

@@ -35,12 +35,13 @@ namespace Soroubat.Api.Controllers
             }
         }
 
-        [HttpGet("{jobNo}/tasks")]
-        public async Task<ActionResult<IEnumerable<JobTaskDto>>> GetTasks(string jobNo)
+        [HttpGet("{jobId}/tasks")] // L'URL contiendra désormais le GUID
+        public async Task<ActionResult<IEnumerable<JobTaskDto>>> GetTasks(Guid jobId)
         {
             try 
             {
-                var tasks = await _siteService.GetTasksByJobAsync(jobNo);
+                // Appel au service avec le Guid
+                var tasks = await _siteService.GetTasksByJobAsync(jobId);
                 return Ok(tasks);
             }
             catch (Exception ex)

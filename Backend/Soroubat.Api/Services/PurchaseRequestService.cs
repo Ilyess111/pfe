@@ -45,39 +45,20 @@ namespace Soroubat.Api.Services
         }
 
         public async Task<PurchaseRequestDto> GetRequestByIdAsync(Guid id)
-        {   
-            // 1. Récupérer l'en-tête (Header) par son identifiant unique
-            var headerResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
+        {
+            // On ajoute ?$expand=purchaseRequestLines à l'URL
+            var response = await _httpClient.GetAsync($"purchaseRequests({id})?$expand=purchaseRequestLines");
             
-            if (!headerResponse.IsSuccessStatusCode) 
-                await HandleErrorResponse(headerResponse);
-
-            var header = await headerResponse.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+                return result; 
+                // Les lignes seront automatiquement remplies dans result.PurchaseRequestLines 
+                // grâce au $expand et à la désérialisation JSON.
+            }
             
-            if (header == null)
-            {
-                throw new Exception("La demande d'achat est vide ou n'a pas pu être lue.");
-            }
-
-            // 2. Récupérer les lignes (Lines) associées au numéro de document (no)
-            // Nous filtrons sur 'documentNo' qui est la clé étrangère dans les lignes
-            if (!string.IsNullOrEmpty(header.No))
-            {
-                var linesResponse = await _httpClient.GetAsync($"purchaseRequestLines?$filter=documentNo eq '{header.No}'");
-                
-                if (linesResponse.IsSuccessStatusCode)
-                {
-                    var linesResult = await linesResponse.Content.ReadFromJsonAsync<BCResponse<PurchaseRequestLineDto>>();
-                    
-                    // 3. Injecter les lignes dans l'objet Header
-                    if (linesResult?.Value != null)
-                    {
-                        header.PurchaseRequestLines = linesResult.Value.ToList();
-                    }
-                }
-            }
-
-            return header;
+            await HandleErrorResponse(response);
+            return null;
         }
 
 // 1. Création du Header uniquement
