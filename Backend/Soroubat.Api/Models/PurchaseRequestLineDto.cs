@@ -55,6 +55,6 @@ namespace Soroubat.Api.Models
 
         [JsonPropertyName("lineAmount")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public decimal LineAmount { get; set; }
+        public decimal? LineAmount { get; set; }
     }
 }
