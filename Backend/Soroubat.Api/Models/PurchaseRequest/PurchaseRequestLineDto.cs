@@ -17,10 +17,10 @@ namespace Soroubat.Api.Models
         public int? LineNo { get; set; }
 
         [JsonPropertyName("transferer")]
-        public bool Transferer { get; set; } 
+        public bool? Transferer { get; set; } 
 
         [JsonPropertyName("type")]
-        public string Type { get; set; }
+        public string? Type { get; set; }
 
         [JsonPropertyName("no")]
         public string? No { get; set; }
@@ -32,7 +32,7 @@ namespace Soroubat.Api.Models
         public string? Description2 { get; set; }
 
         [JsonPropertyName("quantity")]
-        public decimal Quantity { get; set; }
+        public decimal? Quantity { get; set; }
 
         [JsonPropertyName("unitOfMeasureCode")]
         public string? UnitOfMeasureCode { get; set; }
@@ -43,12 +43,12 @@ namespace Soroubat.Api.Models
         [JsonPropertyName("variantCode")]
         public string? VariantCode { get; set; }
 
-        // [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("jobNo")]
         public string? JobNo { get; set; }
 
         [JsonPropertyName("jobTaskNo")]
-        public string JobTaskNo { get; set; }
+        public string? JobTaskNo { get; set; }
 
         [JsonPropertyName("engin")]
         public string? Engin { get; set; }

@@ -50,7 +50,6 @@ page 50121 "PurchaseRequestAPI"
             EntityName = 'purchaseRequestLine';
             EntitySetName = 'purchaseRequestLines';
             SubPageLink = "Document No." = FIELD("No."); 
-            // SubPageLink = "Document Id." = FIELD("No."); 
         }
 
         }

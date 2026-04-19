@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "SWOvOJZDM7Y=",
+  "dgSpecHash": "jgcCNZsPmW0=",
   "success": true,
   "projectFilePath": "C:\\Users\\karou\\Desktop\\pfe2\\Sorobat-PFE\\Backend\\Soroubat.Api\\Soroubat.Api.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\karou\\.nuget\\packages\\bcrypt.net-next\\4.1.0\\bcrypt.net-next.4.1.0.nupkg.sha512",
     "C:\\Users\\karou\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\karou\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\8.0.0\\microsoft.aspnetcore.authentication.jwtbearer.8.0.0.nupkg.sha512",
     "C:\\Users\\karou\\.nuget\\packages\\microsoft.aspnetcore.openapi\\8.0.24\\microsoft.aspnetcore.openapi.8.0.24.nupkg.sha512",

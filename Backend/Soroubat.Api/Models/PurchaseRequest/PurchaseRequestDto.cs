@@ -1,5 +1,7 @@
-
+using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
+
 namespace Soroubat.Api.Models
 {
     public class PurchaseRequestDto
@@ -8,42 +10,46 @@ namespace Soroubat.Api.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Guid? Id { get; set; }
 
-        [JsonPropertyName("no")] // c'est la clé étrangére ( documentNo dans purchaseRequestLine)
+        [JsonPropertyName("no")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? No { get; set; }
 
         [JsonPropertyName("observation")]
-        public string? observation { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Observation { get; set; }
 
         [JsonPropertyName("jobNo")]
-        public string JobNo { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? JobNo { get; set; }
 
         [JsonPropertyName("jobDescription")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? JobDescription { get; set; }
 
         [JsonPropertyName("requesterId")]
-        public string RequesterId { get; set; }
+        public string? RequesterId { get; set; }
 
         [JsonPropertyName("requestType")]
-        public string RequestType { get; set; }
+        public string? RequestType { get; set; }
 
         [JsonPropertyName("engin")]
-        public string Engin { get; set; }
+        public string? Engin { get; set; }
 
         [JsonPropertyName("descriptionEngin")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? DescriptionEngin { get; set; } // on peut laisser cette propriété nullable car elle n'est pas obligatoire dans BC, et on peut ne pas vouloir l'afficher dans l'interface si elle est vide. De plus, cela évite les problèmes de désérialisation si BC ne la retourne pas systématiquement.
+        public string? DescriptionEngin { get; set; }
 
         [JsonPropertyName("locationCode")]
         public string? LocationCode { get; set; }
-        
+
         [JsonPropertyName("orderDate")]
-        public DateOnly? OrderDate { get; set; }
+        public string? OrderDate { get; set; }
 
         [JsonPropertyName("dueDate")]
-        public DateOnly? DueDate { get; set; }
+        public string? DueDate { get; set; }
 
         [JsonPropertyName("status")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Status { get; set; }
 
         [JsonPropertyName("amount")]
@@ -53,7 +59,8 @@ namespace Soroubat.Api.Models
         [JsonPropertyName("service")]
         public string? Service { get; set; }
 
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [JsonPropertyName("purchaseRequestLines")]
-        public List<PurchaseRequestLineDto>? PurchaseRequestLines { get; set; } = new List<PurchaseRequestLineDto>();    }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<PurchaseRequestLineDto>? PurchaseRequestLines { get; set; }
+    }
 }

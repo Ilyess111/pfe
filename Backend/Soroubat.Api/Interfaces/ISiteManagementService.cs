@@ -4,13 +4,11 @@ namespace Soroubat.Api.Interfaces
 {
     public interface ISiteManagementService 
     { 
-        // récupère tous les chantiers
-        // Task indique que la méthode est asynchrone et retourne une liste de JobDto encapsulée dans une tâche
-        Task<List<JobDto>> GetAllJobsAsync(); 
+        // Récupère le projet assigné basé sur le numéro du token
+        Task<JobDto> GetAssignedJobAsync(string projectNo); 
 
-        // récupère les tâches d'un chantier spécifique
-        Task<List<JobTaskDto>> GetTasksByJobAsync(Guid jobId);
-        // met à jour le progrès d'une tâche spécifique
-        Task<bool> UpdateTaskProgressAsync(Guid id, decimal progress); 
-    }
+        // Récupère les tâches en utilisant directement le numéro de projet
+        Task<List<JobTaskDto>> GetMyTasksAsync(string projectNo);
+        
+        Task<bool> UpdateTaskProgressAsync(Guid taskId, decimal progress, string authorizedProjectNo);    }
 }

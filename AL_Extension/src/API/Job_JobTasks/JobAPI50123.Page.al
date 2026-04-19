@@ -21,6 +21,14 @@ page 50123 "JobAPI"
                 field(no; Rec."No.") { Caption = 'N° Projet'; }
                 field(description; Rec.Description) { Caption = 'description'; }
                 field(status; Rec.Status) { Caption = 'Statut'; }
+                field(startingDate; Rec."Starting Date") 
+                { 
+                    Caption = 'Date de début'; 
+                }
+                field(endingDate; Rec."Ending Date") // date fin prévue
+                { 
+                    Caption = 'Date de fin'; 
+                }
                 
                 // Pour savoir qui gère le chantier sur le Web
                 field(personResponsible; Rec."Person Responsible") { caption = 'Person Responsible'; } // indique la personne opérationnelle responsable du chantier

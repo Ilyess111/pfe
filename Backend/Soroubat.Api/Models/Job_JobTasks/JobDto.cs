@@ -11,5 +11,10 @@ namespace Soroubat.Api.Models
         public string PersonResponsible { get; set; } = string.Empty;
         public string ProjectManager { get; set; } = string.Empty;
         public string AffectationMagasin { get; set; } = string.Empty;
+        [JsonPropertyName("startingDate")]
+        public DateTime? StartingDate { get; set; }
+
+        [JsonPropertyName("endingDate")]
+        public DateTime? EndingDate { get; set; }
     }
 }

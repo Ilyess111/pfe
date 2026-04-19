@@ -1,64 +1,72 @@
 using Soroubat.Api.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Soroubat.Api.Models;
 
 namespace Soroubat.Api.Controllers
 {
-    [ApiController]
-    [Route("api/[controller]")]
-    public class SiteManagementController : ControllerBase
+[Authorize]
+[ApiController]
+[Route("api/[controller]")]
+public class SiteManagementController : ControllerBase
+{
+    private readonly ISiteManagementService _siteService;
+
+    public SiteManagementController(ISiteManagementService service) 
     {
-        //déclaration
-        private readonly ISiteManagementService _siteService; // c'est pour dire que cette classe aura une inerface ISiteManagementService qui sera utilisée pour accéder aux données de chantier. (résérvation)
+        _siteService = service;
+    }
 
-        public SiteManagementController(ISiteManagementService service) 
+    // Propriété privée pour extraire le numéro de projet du JWT
+    private string UserProjectNo => User.FindFirst("projectNo")?.Value;
+
+    [HttpGet("my-project")]
+    public async Task<ActionResult<JobDto>> GetMyProject()
+    {
+        var projectNo = UserProjectNo;
+        if (string.IsNullOrEmpty(projectNo)) return BadRequest("Aucun projet assigné dans votre profil.");
+
+        try 
         {
-            // _siteservice est une référence à l'interface ISiteManagementService qui passe au service concret SiteManagementService pour fournir l'implémentation de ce service . c'est le principe de l'injection de dépendance qui assure un couplage faible entre le contrôleur et le service.
-            _siteService = service; // affectaion
+            var job = await _siteService.GetAssignedJobAsync(projectNo);
+            return Ok(job);
         }
+        catch (Exception ex) { return StatusCode(500, ex.Message); }
+    }
 
-        [HttpGet]
-        // Task indique qu'un résultat sera retourné de manière 
-        // ActionResult est un type de retour qui encapsule une réponse HTTP, ce qui permet de retourner différents types de réponses (Ok, NotFound, BadRequest, etc.) selon le résultat de l'opération
-        // IEnumerable<JobDto> indique que le résultat attendu est une collection d'objets iterable de type JobDto
-        public async Task<ActionResult<IEnumerable<JobDto>>> GetJobs()
+    [HttpGet("my-tasks")]
+    public async Task<ActionResult<IEnumerable<JobTaskDto>>> GetMyTasks()
+    {
+        var projectNo = UserProjectNo;
+        if (string.IsNullOrEmpty(projectNo)) return BadRequest("Accès refusé : Aucun projet assigné.");
+
+        try 
         {
-            try 
-            {
-                // Modification : on utilise un bloc try-catch car le service lance désormais des exceptions en cas d'erreur de données
-                var jobs = await _siteService.GetAllJobsAsync(); // await est utilisé pour attendre la complétion de l'opération asynchrone GetAllJobsAsync() 
-                return Ok(jobs); // ok jobs retourne une réponse HTTP 200 avec la liste des chantiers récupérés depuis BC à partir de la méthode GetAllJobsAsync() du service ISiteManagementService
-            }
-            catch (Exception ex) // si le service lance une exception, on la capture ici et on retourne une réponse HTTP 500 avec le message d'erreur de l'exception pour informer le client de ce qui s'est mal passé
-            {
-                return StatusCode(500, new { message = ex.Message });
-            }
+            // Le backend décide lui-même quel projet charger
+            var tasks = await _siteService.GetMyTasksAsync(projectNo);
+            return Ok(tasks);
         }
+        catch (Exception ex) { return StatusCode(500, ex.Message); }
+    }
 
-        [HttpGet("{jobId}/tasks")] // L'URL contiendra désormais le GUID
-        public async Task<ActionResult<IEnumerable<JobTaskDto>>> GetTasks(Guid jobId)
-        {
-            try 
-            {
-                // Appel au service avec le Guid
-                var tasks = await _siteService.GetTasksByJobAsync(jobId);
-                return Ok(tasks);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = ex.Message });
-            }
-        }
 
-        [HttpPatch("update-progress")] // la méthode patch est utilisée pour les mises à jour partielles
+
+        [HttpPatch("update-progress")]
         public async Task<IActionResult> UpdateProgress([FromBody] UpdateProgressRequest request) 
         {
             try 
             {
-                // on utilise success pour savoir si la mise à jour a réussi ou pas.
-                var success = await _siteService.UpdateTaskProgressAsync(request.Id, request.Progress);
-                if (success) return Ok(new { message = "Mise à jour réussie" });
-                return BadRequest("Échec de la mise à jour");
+                var projectNo = User.FindFirst("projectNo")?.Value;
+                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+
+                var success = await _siteService.UpdateTaskProgressAsync(request.Id, request.Progress, projectNo);
+                
+                if (success) return Ok(new { message = "Avancement mis à jour avec succès" });
+                return BadRequest("Erreur lors de la mise à jour dans Business Central");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message); // Retourne une erreur 403
             }
             catch (Exception ex)
             {
