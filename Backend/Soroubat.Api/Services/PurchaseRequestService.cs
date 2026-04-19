@@ -53,8 +53,7 @@ namespace Soroubat.Api.Services
             {
                 var result = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
                 return result; 
-                // Les lignes seront automatiquement remplies dans result.PurchaseRequestLines 
-                // grâce au $expand et à la désérialisation JSON.
+
             }
             
             await HandleErrorResponse(response);

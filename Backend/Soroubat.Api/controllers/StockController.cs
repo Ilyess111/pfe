@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Services;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace Soroubat.Api.Controllers
 {
+    [Authorize] // Sécurise l'accès : le jeton JWT est désormais obligatoire
     [ApiController]
     [Route("api/[controller]")]
     public class StockController : ControllerBase
@@ -18,14 +21,12 @@ namespace Soroubat.Api.Controllers
         [HttpGet("my-stock")]
         public async Task<IActionResult> GetMyStock()
         {
-            // RECUPÉRATION DE L'IDENTITÉ
-            // Si User.Identity.Name est vide (pas de JWT/Session), on utilise l'email de test
-            var userEmail = User.Identity?.Name;
+            // Récupération de l'email directement depuis les Claims du Token JWT
+            var userEmail = User.FindFirstValue(ClaimTypes.Email);
 
             if (string.IsNullOrEmpty(userEmail))
             {
-                // À REMPLACER PAR L'EMAIL RÉEL LORSQUE LE LOGIN SERA PRÊT
-                userEmail = "test.email@exemple.com"; 
+                return Unauthorized(new { message = "Email non trouvé dans le jeton." });
             }
 
             var stock = await _stockService.GetStockByChefEmailAsync(userEmail);

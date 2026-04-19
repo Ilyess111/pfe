@@ -1,23 +1,23 @@
 using System;
-using System.Text.Json.Serialization;
+using Newtonsoft.Json; 
 
 namespace Soroubat.Api.Models
 {
     public class ChefChantierDto
     {
-        [JsonPropertyName("id")]
+        [JsonProperty("id")] 
         public Guid Id { get; set; }
 
-        [JsonPropertyName("nomEtPrenom")]
+        [JsonProperty("nomEtPrenom")]
         public string NomEtPrenom { get; set; }
 
-        [JsonPropertyName("email")]
+        [JsonProperty("email")]
         public string Email { get; set; }
 
-        [JsonPropertyName("numProjet")]
+        [JsonProperty("numProjet")]
         public string NumProjet { get; set; }
 
-        [JsonPropertyName("actif")]
+        [JsonProperty("actif")]
         public bool Actif { get; set; }
     }
 }

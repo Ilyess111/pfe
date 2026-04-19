@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Soroubat.Api.Services
+namespace Soroubat.Api.Interfaces
 {
     public interface ILookupService
     {

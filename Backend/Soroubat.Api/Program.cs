@@ -3,6 +3,7 @@ using Soroubat.Api.Services;
 using Soroubat.Api.Data;
 using System.Text;
 using System.Text.Json;
+using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
@@ -77,28 +78,37 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(client => {
+// configuration injection dépendances 
+void ConfigureBCClient(HttpClient client) {
     client.BaseAddress = new Uri(apiUri);
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+    client.DefaultRequestHeaders.Accept.Clear(); // On vide les headers par sécurité
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+}
 
-builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(client => {
-    client.BaseAddress = new Uri(apiUri);
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+void ConfigureODataClient(HttpClient client) {
+    client.BaseAddress = new Uri(odataUri);
+    client.DefaultRequestHeaders.Accept.Clear();
+    // OData demande spécifiquement du JSON avec métadonnées minimales pour être efficace
+    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+}
 
-builder.Services.AddHttpClient<ITransferService, TransferService>(client =>
-{
-    client.BaseAddress = new Uri(apiUri);
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
-// ON FORCE UN CLIENT DIFFÉRENT POUR LE LOOKUP
-builder.Services.AddHttpClient<ILookupService, LookupService>(client => {
-    client.BaseAddress = new Uri(odataUri); 
-})
+builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<ITransferService, TransferService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+// ON FORCE UN CLIENT DIFFÉRENT POUR LE LOOKUP ( odata )
+builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
-builder.Services.AddHttpClient<IStockService, StockService>(client => {
-    client.BaseAddress = new Uri(apiUri); 
-})
+builder.Services.AddHttpClient<IStockService, StockService>(ConfigureBCClient)
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<IChefChantierService, ChefChantierService>(ConfigureBCClient)
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<IVehiculeService, VehiculeService>(ConfigureBCClient)
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 builder.Services.AddScoped<IAuthService, AuthService>();

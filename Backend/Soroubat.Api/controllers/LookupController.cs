@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Services;
+using Soroubat.Api.Interfaces;
 
 namespace Soroubat.Api.Controllers
 {

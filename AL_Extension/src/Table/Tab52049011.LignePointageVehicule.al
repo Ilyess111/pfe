@@ -8,6 +8,8 @@ Table 52049011 "Ligne Pointage Vehicule"
     {
         field(1; "Document N°"; Code[20])
         {
+            Caption = 'Document No.';
+            TableRelation = "Entete Pointage Vehicule"."N° Document";
         }
         field(2; Vehicule; Code[20])
         {
