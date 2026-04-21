@@ -42,7 +42,6 @@ public class SiteManagementController : ControllerBase
 
         try 
         {
-            // Le backend décide lui-même quel projet charger
             var tasks = await _siteService.GetMyTasksAsync(projectNo);
             return Ok(tasks);
         }

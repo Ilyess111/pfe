@@ -20,7 +20,7 @@ page 50121 "PurchaseRequestAPI"
                 // Identifiants techniques
                 field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
                 field(no; Rec."No.") { Caption = 'N° Demande'; Editable = false; }
-                field(Observation;Rec.Observation) { Caption = 'Observation'; } 
+                field(Observation; Rec.Observation) { Caption = 'Observation'; }
 
                 // Champs affichés dans la Page 50321 (General)
                 field(jobNo; Rec."Job No.") { Caption = 'N° Projet'; }
@@ -30,10 +30,10 @@ page 50121 "PurchaseRequestAPI"
                 field(engin; Rec.Engin) { Caption = 'Code Engin'; }
                 field(descriptionEngin; Rec."Description Engin") { Caption = 'Désignation Engin'; }
                 field(locationCode; Rec."Location Code") { Caption = 'Code Magasin'; }
-                
+
                 field(orderDate; Rec."Order Date") { Caption = 'Date Commande'; }
                 field(dueDate; Rec."Due Date") { Caption = 'Date d''échéance'; }
-                field(status; Rec.Status) { Caption = 'Statut'; }
+                field(statut; Rec.Statut) { Caption = 'Statut'; }
                 field(amount; Rec.Amount)
                 {
                     Caption = 'Montant';
@@ -42,16 +42,31 @@ page 50121 "PurchaseRequestAPI"
                 // Champ additionnel de table utile pour le Web
                 field(service; Rec.Service) { Caption = 'Service'; }
 
+                // Champ déclencheur pour la transition de statut Open -> To Approve
+                field(submitForApproval; SubmitForApprovalAction)
+                {
+                    Caption = 'Submit For Approval';
 
+                    trigger OnValidate()
+                    var
+                        StatusMgt: Codeunit "PurchaseRequestStatusMgt";
+                    begin
+                        if SubmitForApprovalAction then
+                            StatusMgt.SubmitForApproval(Rec);
+                    end;
+                }
             }
-        part(purchaseRequestLines; "PurchaseRequestLineAPI") // ca permet de faire un expand sur les lignes de la demande d'achat directement depuis la requête OData, ce qui est très pratique pour le Web
-        {
-            Caption = 'Lines';
-            EntityName = 'purchaseRequestLine';
-            EntitySetName = 'purchaseRequestLines';
-            SubPageLink = "Document No." = FIELD("No."); 
-        }
 
+            part(purchaseRequestLines; "PurchaseRequestLineAPI")
+            {
+                Caption = 'Lines';
+                EntityName = 'purchaseRequestLine';
+                EntitySetName = 'purchaseRequestLines';
+                SubPageLink = "Document No." = FIELD("No.");
+            }
         }
     }
+
+    var
+        SubmitForApprovalAction: Boolean;
 }

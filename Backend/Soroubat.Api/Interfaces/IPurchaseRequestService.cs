@@ -12,6 +12,9 @@ namespace Soroubat.Api.Interfaces
         Task<PurchaseRequestDto> CreateHeaderAsync(PurchaseRequestDto header, string projectNo);
         Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, string projectNo);
         Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo);
+        // ##############
+        Task<bool> SubmitForApprovalAsync(Guid id, string projectNo);
+        // #############
         Task<bool> DeleteRequestAsync(Guid id, string projectNo);
         Task<bool> PatchLineAsync(Guid lineId, PurchaseRequestLineDto lineDto, string projectNo);        
         Task<bool> DeleteLineAsync(Guid lineId, string projectNo);

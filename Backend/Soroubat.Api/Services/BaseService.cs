@@ -4,28 +4,30 @@ using Soroubat.Api.Models;
 
 public abstract class BaseService 
 {
-    protected async Task HandleErrorResponse(HttpResponseMessage response)
+    protected new async Task HandleErrorResponse(HttpResponseMessage response)
     {
-        var statusCode = (int)response.StatusCode;
         var errorContent = await response.Content.ReadAsStringAsync();
 
-        // Cas 404 — Ressource introuvable (GUID inexistant, EntitySet mal nommé, etc.)
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        // ✅ Body vide → message générique selon le code HTTP
+        if (string.IsNullOrWhiteSpace(errorContent))
         {
-            throw new Exception($"404 - Ressource introuvable dans Business Central. URL : {response.RequestMessage?.RequestUri}");
+            throw new Exception(response.StatusCode switch
+            {
+                System.Net.HttpStatusCode.NotFound => "Ressource introuvable dans Business Central (404). Vérifiez l'URL de l'action ou que l'extension est déployée.",
+                System.Net.HttpStatusCode.Unauthorized => "Authentification refusée par Business Central (401).",
+                System.Net.HttpStatusCode.Forbidden => "Accès refusé par Business Central (403).",
+                _ => $"Erreur Business Central inattendue. Code HTTP : {(int)response.StatusCode}."
+            });
         }
 
-        // Cas général — on tente de parser le message d'erreur OData de BC
-        try 
+        try
         {
             var bcError = JsonSerializer.Deserialize<BCResponseError>(errorContent);
-            var message = bcError?.Error?.Message ?? errorContent;
-            throw new Exception($"{statusCode} - {message}");
-        } 
-        catch (JsonException) 
+            throw new Exception(bcError?.Error?.Message ?? errorContent);
+        }
+        catch (JsonException)
         {
-            // Le corps n'est pas du JSON (HTML, texte brut, vide...)
-            throw new Exception($"{statusCode} - Réponse BC illisible. Contenu brut : {errorContent}");
+            throw new Exception($"Réponse de Business Central illisible (Format JSON invalide). Code HTTP {(int)response.StatusCode}. Contenu brut : {errorContent}");
         }
     }
 }

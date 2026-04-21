@@ -3001,9 +3001,16 @@ Table 52049069 "Purchase Request"
         Error(Text003, TableCaption);
     end;
 
+    // trigger OnModify()
+    // begin
+    //     rec.TestStatusOpen();
+    // end;
+
+
     trigger OnModify()
     begin
-        rec.TestStatusOpen();
+        if StatusCheckSuspended then exit;  
+        TestField(Statut, Statut::Open);
     end;
 
     var

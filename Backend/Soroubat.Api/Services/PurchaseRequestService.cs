@@ -20,7 +20,6 @@ namespace Soroubat.Api.Services
             _logger = logger;
         }
 
-        // --- MÉTHODES EN-TÊTE (HEADER) ---
 
         public async Task<IEnumerable<PurchaseRequestDto>> GetAllRequestsAsync(string projectNo)
         {
@@ -92,60 +91,142 @@ namespace Soroubat.Api.Services
             return null;
         }
 
-        public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, string projectNo)
+public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, string projectNo)
+{
+    if (lines == null || !lines.Any()) return false;
+
+    // 1. On récupère le dernier numéro de ligne UNE SEULE FOIS au début
+    var firstDocNo = lines.First().DocumentNo;
+    int currentMaxLineNo = await GetLastLineNoAsync(firstDocNo);
+
+    foreach (var line in lines)
+    {
+        line.JobNo = projectNo;
+        
+        // 2. On incrémente localement pour chaque ligne du tableau
+        // Cela garantit que la 1ère ligne aura (Max + 10000) et la 2ème (Max + 20000)
+        currentMaxLineNo += 10000;
+        line.LineNo = currentMaxLineNo;
+
+        // LOG pour vérifier ce qui est envoyé (Regardez votre console de debug !)
+        _logger.LogInformation("Tentative création ligne {Doc} No {Line}", line.DocumentNo, line.LineNo);
+
+        var content = new StringContent(JsonSerializer.Serialize(line), Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync("purchaseRequestLines", content);
+
+        if (!response.IsSuccessStatusCode)
         {
-            foreach (var line in lines)
-            {
-                // SÉCURITÉ : On force le projet sur chaque ligne
-                line.JobNo = projectNo;
-
-                var content = new StringContent(JsonSerializer.Serialize(line), Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync("purchaseRequestLines", content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    // Si une ligne échoue, on log l'erreur et on peut choisir d'arrêter ou de continuer
-                    await HandleErrorResponse(response);
-                    return false; 
-                }
-            }
-            return true;
+            // Si ça échoue ici, on arrête tout pour éviter des données incohérentes
+            await HandleErrorResponse(response);
+            return false; 
         }
+    }
+    return true;
+}
+
+        // public async Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
+        // {
+        //     // 1. Récupérer l'existant pour avoir l'ETag
+        //     var responseGet = await _httpClient.GetAsync($"purchaseRequests({id})");
+        //     if (!responseGet.IsSuccessStatusCode) return false;
+
+        //     // Extraire l'ETag des en-têtes de la réponse
+        //     var etag = responseGet.Headers.ETag?.ToString();
+
+        //     // 2. Préparer la requête PATCH
+        //     var json = JsonSerializer.Serialize(header, new JsonSerializerOptions { 
+        //         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
+        //     });
+        //     var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        //     var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
+        //     {
+        //         Content = content
+        //     };
+
+        //     // 3. Ajouter le jeton de concurrence (ETag)
+        //     // "*" signifie "forcer la mise à jour peu importe la version" (Pratique pour les tests)
+        //     // Pour être rigoureux, utilisez la variable 'etag' récupérée plus haut.
+        //     request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
+
+        //     var responsePatch = await _httpClient.SendAsync(request);
+
+        //     if (!responsePatch.IsSuccessStatusCode)
+        //     {
+        //         await HandleErrorResponse(responsePatch);
+        //     }
+
+        //     return responsePatch.IsSuccessStatusCode;
+        // }
 
         public async Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
-        {
-            // 1. Récupérer l'existant pour avoir l'ETag
-            var responseGet = await _httpClient.GetAsync($"purchaseRequests({id})");
-            if (!responseGet.IsSuccessStatusCode) return false;
+{
+    var responseGet = await _httpClient.GetAsync($"purchaseRequests({id})");
+    if (!responseGet.IsSuccessStatusCode) return false;
 
-            // Extraire l'ETag des en-têtes de la réponse
-            var etag = responseGet.Headers.ETag?.ToString();
+    var etag = responseGet.Headers.ETag?.ToString();
+    
+    // ⬇️ LOG : Voir exactement ce qui est envoyé à BC
+    var json = JsonSerializer.Serialize(header, new JsonSerializerOptions { 
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
+    });
+    _logger.LogInformation("PATCH purchaseRequests({Id}) — Body: {Json} — ETag: {ETag}", id, json, etag);
 
-            // 2. Préparer la requête PATCH
-            var json = JsonSerializer.Serialize(header, new JsonSerializerOptions { 
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
-            });
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+    var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
+    {
+        Content = content
+    };
+    request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
 
-            var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
-            {
-                Content = content
-            };
+    var responsePatch = await _httpClient.SendAsync(request);
+    
+    // ⬇️ LOG : Voir la réponse de BC
+    var responseBody = await responsePatch.Content.ReadAsStringAsync();
+    _logger.LogInformation("PATCH Response: {Status} — {Body}", (int)responsePatch.StatusCode, responseBody);
 
-            // 3. Ajouter le jeton de concurrence (ETag)
-            // "*" signifie "forcer la mise à jour peu importe la version" (Pratique pour les tests)
-            // Pour être rigoureux, utilisez la variable 'etag' récupérée plus haut.
-            request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
+    if (!responsePatch.IsSuccessStatusCode)
+    {
+        await HandleErrorResponse(responsePatch);
+    }
 
-            var responsePatch = await _httpClient.SendAsync(request);
+    return responsePatch.IsSuccessStatusCode;
+}
 
-            if (!responsePatch.IsSuccessStatusCode)
-            {
-                await HandleErrorResponse(responsePatch);
-            }
+public async Task<bool> SubmitForApprovalAsync(Guid id, string projectNo)
+{
+    // 1. Vérification sécurité
+    var getResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
+    if (!getResponse.IsSuccessStatusCode) return false;
 
-            return responsePatch.IsSuccessStatusCode;
-        }
+    var existing = await getResponse.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+    if (existing == null) return false;
+
+    if (!existing.JobNo.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+        throw new UnauthorizedAccessException("Action refusée : cette demande n'appartient pas à votre projet.");
+
+    if (!existing.Statut.Equals("Open", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException($"Statut actuel '{existing.Statut}' — seul 'Open' peut être soumis.");
+
+    var etag = getResponse.Headers.ETag?.ToString();
+
+    // 2. PATCH avec le champ déclencheur
+    var json = """{"submitForApproval": true}""";
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+    var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
+    {
+        Content = content
+    };
+    request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
+
+    var response = await _httpClient.SendAsync(request);
+
+    if (!response.IsSuccessStatusCode)
+        await HandleErrorResponse(response);
+
+    return response.IsSuccessStatusCode;
+}
 
         public async Task<bool> DeleteRequestAsync(Guid id, string projectNo)
         {
@@ -172,7 +253,6 @@ namespace Soroubat.Api.Services
             return response.IsSuccessStatusCode;
         }
 
-        // --- MÉTHODES LIGNES (LINES) ---
 
         public async Task<bool> PatchLineAsync(Guid lineId, PurchaseRequestLineDto lineDto, string projectNo)
         {

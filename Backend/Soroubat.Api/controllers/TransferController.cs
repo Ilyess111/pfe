@@ -2,28 +2,38 @@ using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
+using Microsoft.AspNetCore.Authorization;
+
 
 namespace Soroubat.Api.Controllers
 {
-    [ApiController]
-    [Route("api/[controller]")]
+[Authorize]
+[ApiController]
+[Route("api/[controller]")]
     public class TransferController : ControllerBase
     {
         private readonly ITransferService _service;
+
+        // Ajout de la variable locale comme dans les autres contrôleurs
+        private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? "";
 
         public TransferController(ITransferService service)
         {
             _service = service;
         }
 
-        // --- MÉTHODES EN-TÊTE (HEADER) ---
-
         [HttpGet]
         public async Task<ActionResult<IEnumerable<TransferHeaderDto>>> GetAll()
         {
             try 
             {
-                var transfers = await _service.GetAllTransfersAsync();
+                // Utilisation de la variable locale
+                var projectNo = UserProjectNo;
+                
+                if (string.IsNullOrEmpty(projectNo))
+                    return Unauthorized("Aucun projet associé.");
+
+                var transfers = await _service.GetAllTransfersAsync(projectNo);
                 return Ok(transfers);
             }
             catch (Exception ex)
@@ -37,8 +47,16 @@ namespace Soroubat.Api.Controllers
         {
             try 
             {
-                var transfer = await _service.GetTransferByIdAsync(id);
-                if (transfer == null) return NotFound();
+                var projectNo = UserProjectNo; // Utilise la variable locale sécurisée 
+                
+                if (string.IsNullOrEmpty(projectNo)) 
+                    return Unauthorized("Aucun projet associé.");
+
+                var transfer = await _service.GetTransferByIdAsync(id, projectNo);
+                
+                if (transfer == null) 
+                    return NotFound("Ordre de transfert introuvable ou accès non autorisé.");
+                    
                 return Ok(transfer);
             }
             catch (Exception ex)
@@ -49,18 +67,19 @@ namespace Soroubat.Api.Controllers
 
 
 
-
-        // --- ACTIONS SUR LES LIGNES ---
-
-
         [HttpPatch("lines/{id}")]
         public async Task<IActionResult> PatchLine(Guid id, [FromBody] JsonElement body)
         {
             try 
             {
-                var success = await _service.UpdateLineAsync(id, body);
-                if (success) return NoContent();
-                return BadRequest("Échec de la mise à jour de la ligne");
+                var projectNo = UserProjectNo;
+                if (string.IsNullOrEmpty(projectNo)) return Unauthorized("Aucun projet associé.");
+
+                var success = await _service.UpdateLineAsync(id, body, projectNo);
+                
+                if (success) return Ok(new { message = "Réception mise à jour avec succès." });
+                
+                return BadRequest("Échec de la mise à jour de la ligne (Vérifiez vos droits ou l'ID).");
             } 
             catch (Exception ex) 
             {

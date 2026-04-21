@@ -1,0 +1,40 @@
+using System.Text.Json.Serialization;
+
+namespace Soroubat.Api.Models
+{
+    public class VehiculePointageLine
+    {
+        [JsonPropertyName("id")]
+            [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Guid? Id { get; set; }
+
+        [JsonPropertyName("documentNo")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? DocumentNo { get; set; }
+
+        [JsonPropertyName("vehiculeNo")]
+        public string? VehiculeNo { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("status")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("hoursWorked")]
+        public decimal HoursWorked { get; set; }
+
+        [JsonPropertyName("startIndex")] 
+        public decimal StartIndex { get; set; }
+
+        [JsonPropertyName("endIndex")]
+        public decimal EndIndex { get; set; }
+
+        [JsonPropertyName("fuelConsumed")]
+        public decimal? FuelConsumed { get; set; }
+
+        [JsonPropertyName("breakdownMotiv")]
+        public string? BreakdownMotiv { get; set; }
+    }
+}

@@ -48,9 +48,9 @@ namespace Soroubat.Api.Models
         [JsonPropertyName("dueDate")]
         public string? DueDate { get; set; }
 
-        [JsonPropertyName("status")]
+        [JsonPropertyName("statut")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? Status { get; set; }
+        public string? Statut { get; set; }
 
         [JsonPropertyName("amount")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

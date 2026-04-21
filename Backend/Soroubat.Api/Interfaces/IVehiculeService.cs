@@ -8,15 +8,14 @@ namespace Soroubat.Api.Interfaces
     public interface IVehiculeService
     {
         // Méthodes pour le Header (En-tête)
-        Task<IEnumerable<VehiculePointageHeader>> GetHeadersByJobAsync(string jobNo);
-        Task<VehiculePointageHeader> GetHeaderByIdAsync(Guid id); 
-        Task<VehiculePointageHeader> CreateHeaderAsync(VehiculePointageHeader header);
-        Task<VehiculePointageHeader> UpdateHeaderAsync(Guid id, VehiculePointageHeader header);
-        Task<bool> DeleteHeaderAsync(Guid id);
+        Task<IEnumerable<VehiculePointageHeader>> GetHeadersByJobAsync(string projectNo);
+        Task<VehiculePointageHeader> GetHeaderByIdAsync(Guid id, string projectNo);
+        Task<VehiculePointageHeader?> CreateHeaderAsync(VehiculePointageHeader header, string projectNo);
+        Task<VehiculePointageHeader?> UpdateHeaderAsync(Guid id, VehiculePointageHeader header, string projectNo);
+        Task<bool> DeleteHeaderAsync(Guid id, string projectNo);
+        // Task<bool> DeleteHeaderAsync(Guid id);
 
-        // Méthodes pour les Lines (Lignes)
-        Task<VehiculePointageLine> AddLineAsync(VehiculePointageLine line);
-        Task<VehiculePointageLine> UpdateLineAsync(Guid id, VehiculePointageLine line);
-        Task<bool> DeleteLineAsync(Guid id);
+
+        Task<VehiculePointageLine?> UpdateLineAsync(Guid id, VehiculePointageLine line, string projectNo);
     }
 }

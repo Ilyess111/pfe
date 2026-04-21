@@ -24,7 +24,7 @@ namespace Soroubat.Api.Models
         public string? InTransitCode { get; set; }
 
         [JsonPropertyName("postingDate")]
-        public DateOnly? PostingDate { get; set; }
+        public string? PostingDate { get; set; }
 
         [JsonPropertyName("observation")]
         public string? Observation { get; set; }

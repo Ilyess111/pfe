@@ -2,66 +2,36 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
-using System;
-using System.Security.Claims;
-using System.Threading.Tasks;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Soroubat.Api.Controllers
 {
-    [Authorize]
-    [ApiController]
-    [Route("api/[controller]")]
-    public class VehiculePointageController : ControllerBase
+[Authorize]
+[ApiController]
+[Route("api/[controller]")]
+public class VehiculePointageController : ControllerBase
+{
+    private readonly IVehiculeService _vehiculeService;
+
+    // Récupération standardisée du projet depuis le jeton JWT (claim "projectNo")
+    private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? "";
+
+    public VehiculePointageController(IVehiculeService vehiculeService)
     {
-        private readonly IVehiculeService _vehiculeService;
-        private readonly IChefChantierService _chefService; // Service qui fait le lien Email -> JobNo
-
-        public VehiculePointageController(IVehiculeService vehiculeService, IChefChantierService chefService)
-        {
-            _vehiculeService = vehiculeService;
-            _chefService = chefService;
-        }
-
-        // --- Opérations sur les HEADERS ---
+        _vehiculeService = vehiculeService;
+    }
 
         [HttpGet("my-pointages")]
         public async Task<IActionResult> GetMyPointages()
         {
-            var email = User.FindFirst(ClaimTypes.Email)?.Value;
-            var jobNo = await _chefService.GetJobNoByEmailAsync(email);
-            return Ok(await _vehiculeService.GetHeadersByJobAsync(jobNo));
-        }
-
-        [HttpGet("header/{id}")]
-        public async Task<IActionResult> GetHeader(Guid id)
-        {
-            var header = await _vehiculeService.GetHeaderByIdAsync(id);
-            return header != null ? Ok(header) : NotFound();
-        }
-
-        [HttpPost("header")]
-        public async Task<IActionResult> CreateHeader([FromBody] VehiculePointageHeader header)
-        {
-            var email = User.FindFirst(ClaimTypes.Email)?.Value;
-            header.JobNo = await _chefService.GetJobNoByEmailAsync(email);
-            var result = await _vehiculeService.CreateHeaderAsync(header);
-            return Ok(result);
-        }
-
-        [HttpPatch("{id}")]
-        public async Task<IActionResult> UpdateHeader(Guid id, [FromBody] VehiculePointageHeader header)
-        {
             try 
             {
-                // On récupère l'objet mis à jour au lieu d'un bool
-                var updatedHeader = await _vehiculeService.UpdateHeaderAsync(id, header);
+                var projectNo = UserProjectNo;
+                if (string.IsNullOrEmpty(projectNo)) return BadRequest("Projet non identifié.");
 
-                if (updatedHeader != null)
-                {
-                    return Ok(updatedHeader); // On renvoie l'objet à Angular
-                }
-                
-                return NotFound(new { message = "L'en-tête n'a pas pu être mis à jour." });
+                var records = await _vehiculeService.GetHeadersByJobAsync(projectNo);
+                return Ok(records);
             }
             catch (Exception ex)
             {
@@ -69,52 +39,112 @@ namespace Soroubat.Api.Controllers
             }
         }
 
-        [HttpDelete("header/{id}")]
-        public async Task<IActionResult> DeleteHeader(Guid id)
+        [HttpGet("header/{id}")]
+        public async Task<IActionResult> GetHeader(Guid id)
         {
-            var success = await _vehiculeService.DeleteHeaderAsync(id);
-            return success ? Ok() : BadRequest("Erreur lors de la suppression du header");
+            try 
+            {
+                var header = await _vehiculeService.GetHeaderByIdAsync(id, UserProjectNo);
+                if (header == null) return NotFound();
+                return Ok(header);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
-        // --- Opérations sur les LINES ---
-
-
-        [HttpPost("line")]
-        public async Task<IActionResult> AddLine([FromBody] VehiculePointageLine line)
+    [HttpPost("header")]
+    public async Task<IActionResult> CreateHeader([FromBody] VehiculePointageHeader header)
+    {
+        try 
         {
-            var result = await _vehiculeService.AddLineAsync(line);
+            var projectNo = UserProjectNo;
+            if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+
+            header.JobNo = projectNo;
+
+            var result = await _vehiculeService.CreateHeaderAsync(header, projectNo);
             return Ok(result);
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+            
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPatch("header/{id}")]
+    public async Task<IActionResult> UpdateHeader(Guid id, [FromBody] VehiculePointageHeader header)
+    {
+        try 
+        {
+            var updated = await _vehiculeService.UpdateHeaderAsync(id, header, UserProjectNo);
+            
+            if (updated == null) return BadRequest(new { message = "Erreur lors de la mise à jour de l'en-tête." });
+            
+            return Ok(updated);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("header/{id}")]
+    public async Task<IActionResult> DeleteHeader(Guid id)
+    {
+        try
+        {
+            var deleted = await _vehiculeService.DeleteHeaderAsync(id, UserProjectNo);
+            if (deleted) return Ok(new { message = "Pointage supprimé avec succès." });
+            return NotFound();
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+
+        // [HttpPost("line")]
+        // public async Task<IActionResult> AddLine([FromBody] VehiculePointageLine line)
+        // {
+        //     var result = await _vehiculeService.AddLineAsync(line);
+        //     return Ok(result);
+        // }
 
         [HttpPatch("line/{id}")]
         public async Task<IActionResult> UpdateLine(Guid id, [FromBody] VehiculePointageLine line)
         {
             try 
             {
-                // On récupère l'objet mis à jour depuis le service
-                var updatedLine = await _vehiculeService.UpdateLineAsync(id, line);
-
-                if (updatedLine != null)
-                {
-                    // Succès : On renvoie l'objet à Angular avec un code 200
-                    return Ok(updatedLine);
-                }
+                // On récupère le projet depuis le token pour la sécurité
+                var result = await _vehiculeService.UpdateLineAsync(id, line, UserProjectNo);
                 
-                // Si le service renvoie null sans lancer d'exception
-                return NotFound(new { message = $"La ligne avec l'ID {id} n'a pas pu être trouvée ou mise à jour." });
+                if (result == null) return BadRequest(new { message = "Erreur lors de la mise à jour de la ligne." });
+                
+                return Ok(result);
             }
             catch (Exception ex)
             {
-                // On renvoie le message d'erreur propre extrait par HandleErrorResponse
                 return BadRequest(new { message = ex.Message });
             }
         }
 
-        [HttpDelete("line/{id}")]
-        public async Task<IActionResult> DeleteLine(Guid id)
-        {
-            var success = await _vehiculeService.DeleteLineAsync(id);
-            return success ? Ok() : BadRequest("Erreur lors de la suppression de la ligne");
-        }
+        // [HttpDelete("line/{id}")]
+        // public async Task<IActionResult> DeleteLine(Guid id)
+        // {
+        //     var success = await _vehiculeService.DeleteLineAsync(id);
+        //     return success ? Ok() : BadRequest("Erreur lors de la suppression de la ligne");
+        // }
     }
 }

@@ -6,6 +6,6 @@ namespace Soroubat.Api.Services
 {
     public interface IStockService
     {
-        Task<List<StockChantierDto>> GetStockByChefEmailAsync(string email);
+      Task<List<StockChantierDto>> GetStockByProjectAsync(string projectNo);  
     }
 }

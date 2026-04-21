@@ -1,164 +1,154 @@
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Net.Http.Json;
+using System.Text;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Soroubat.Api.Services
 {
-    public class VehiculeService : BaseService , IVehiculeService
+    public class VehiculeService : BaseService, IVehiculeService
     {
         private readonly HttpClient _httpClient;
+        private readonly ILogger<VehiculeService> _logger;
 
-        public VehiculeService(HttpClient httpClient)
+        public VehiculeService(HttpClient httpClient, ILogger<VehiculeService> logger)
         {
             _httpClient = httpClient;
+            _logger = logger;
         }
 
-
-
-        public async Task<IEnumerable<VehiculePointageHeader>> GetHeadersByJobAsync(string jobNo)
+        public async Task<IEnumerable<VehiculePointageHeader>> GetHeadersByJobAsync(string projectNo)
         {
-        var url = $"vehiculePointageHeaders?$filter=jobNo eq '{jobNo}'&$expand=vehiculePointageLines";
-        
-        var response = await _httpClient.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-        
-        var content = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<BCResponse<VehiculePointageHeader>>(content);
-        
-        return result.Value;
+            var url = $"vehiculePointageHeaders?$filter=jobNo eq '{projectNo}'";
+            var response = await _httpClient.GetAsync(url);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                await HandleErrorResponse(response);
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<VehiculePointageHeader>>();
+            return result?.Value ?? Enumerable.Empty<VehiculePointageHeader>();
         }
 
-
-        public async Task<VehiculePointageHeader> GetHeaderByIdAsync(Guid id)
+        public async Task<VehiculePointageHeader?> GetHeaderByIdAsync(Guid id, string projectNo)
         {
-
             var url = $"vehiculePointageHeaders({id})?$expand=vehiculePointageLines";
-
             var response = await _httpClient.GetAsync(url);
 
             if (response.IsSuccessStatusCode)
             {
-                var content = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<VehiculePointageHeader>(content);
+                var header = await response.Content.ReadFromJsonAsync<VehiculePointageHeader>();
+                if (header != null && header.JobNo == projectNo)
+                {
+                    return header;
+                }
+                throw new UnauthorizedAccessException("Accès refusé à ce projet.");
             }
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
 
             await HandleErrorResponse(response);
             return null;
         }
 
-        public async Task<VehiculePointageHeader> CreateHeaderAsync(VehiculePointageHeader header)
+        public async Task<VehiculePointageHeader?> CreateHeaderAsync(VehiculePointageHeader header, string projectNo)
         {
-            // On définit les paramètres de sérialisation
-            var settings = new JsonSerializerSettings 
-            { 
-                NullValueHandling = NullValueHandling.Ignore,
-                // On force le format de date attendu par Business Central (Edm.Date)
-                DateFormatString = "yyyy-MM-dd" 
-            };
-            
-            string json = JsonConvert.SerializeObject(header, settings);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            header.JobNo = projectNo;
 
-            var response = await _httpClient.PostAsync("vehiculePointageHeaders", content);
-            
+            var response = await _httpClient.PostAsJsonAsync("vehiculePointageHeaders?$expand=vehiculePointageLines", header);
+
             if (response.IsSuccessStatusCode)
             {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<VehiculePointageHeader>(responseBody);
+                return await response.Content.ReadFromJsonAsync<VehiculePointageHeader>();
             }
 
             await HandleErrorResponse(response);
             return null;
         }
 
-        public async Task<VehiculePointageHeader> UpdateHeaderAsync(Guid id, VehiculePointageHeader header)
+        public async Task<VehiculePointageHeader?> UpdateHeaderAsync(Guid id, VehiculePointageHeader header, string projectNo)
         {
-            var settings = new JsonSerializerSettings 
+            header.JobNo = projectNo;
+
+            var options = new JsonSerializerOptions 
             { 
-                NullValueHandling = NullValueHandling.Ignore,
-                DateFormatString = "yyyy-MM-dd" 
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
             };
 
-            string json = JsonConvert.SerializeObject(header, settings);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            // CRUCIAL : On ajoute l'étoile pour dire à BC d'écraser la donnée
             _httpClient.DefaultRequestHeaders.Remove("If-Match");
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
 
-            var response = await _httpClient.PatchAsync($"vehiculePointageHeaders({id})", content);
+            var response = await _httpClient.PatchAsJsonAsync($"vehiculePointageHeaders({id})", header, options);
 
             if (response.IsSuccessStatusCode)
             {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<VehiculePointageHeader>(responseBody);
+                return await response.Content.ReadFromJsonAsync<VehiculePointageHeader>();
             }
 
             await HandleErrorResponse(response);
             return null;
         }
 
-        public async Task<bool> DeleteHeaderAsync(Guid id)
+        public async Task<bool> DeleteHeaderAsync(Guid id, string projectNo)
         {
+            // 1. SÉCURITÉ : On tente de récupérer le header
+            // Si le projet ne correspond pas, GetHeaderByIdAsync lancera une UnauthorizedAccessException
+            var header = await GetHeaderByIdAsync(id, projectNo);
+            
+            if (header == null) return false;
+
+            // 2. SUPPRESSION : Si on arrive ici, l'utilisateur est autorisé
+            // On nettoie les headers pour éviter les conflits d'ETag sur le DELETE
+            _httpClient.DefaultRequestHeaders.Remove("If-Match");
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
+
             var response = await _httpClient.DeleteAsync($"vehiculePointageHeaders({id})");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await HandleErrorResponse(response);
+            }
+
             return response.IsSuccessStatusCode;
         }
 
-        public async Task<VehiculePointageLine> AddLineAsync(VehiculePointageLine line)
+        public async Task<VehiculePointageLine?> UpdateLineAsync(Guid id, VehiculePointageLine line, string projectNo)
         {
-            // On utilise les réglages Newtonsoft pour ignorer l'ID s'il est nul
-            var settings = new JsonSerializerSettings 
+            // 1. Configuration de la sérialisation (ignorer les nulls pour ne pas écraser BC)
+            var options = new JsonSerializerOptions 
             { 
-                NullValueHandling = NullValueHandling.Ignore 
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
             };
-            
-            string json = JsonConvert.SerializeObject(line, settings);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-            // On utilise PostAsync au lieu de PostAsJsonAsync
-            var response = await _httpClient.PostAsync("vehiculePointageLines", content);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<VehiculePointageLine>(responseBody);
-            }
-
-            // Capture l'erreur 400 détaillée de Business Central
-            await HandleErrorResponse(response);
-            return null;
-        }
-
-        public async Task<VehiculePointageLine> UpdateLineAsync(Guid id, VehiculePointageLine line)
-        {
-            var settings = new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore };
-            string json = JsonConvert.SerializeObject(line, settings);
-            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-            // On force l'écrasement avec l'étoile
+            // 2. Gestion de la concurrence (ETag) pour Business Central
             _httpClient.DefaultRequestHeaders.Remove("If-Match");
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("If-Match", "*");
 
-            var response = await _httpClient.PatchAsync($"vehiculePointageLines({id})", content);
+            // 3. Envoi de la requête PATCH
+            // Note : On utilise PatchAsJsonAsync pour l'homogénéité
+            var response = await _httpClient.PatchAsJsonAsync($"vehiculePointageLines({id})", line, options);
 
             if (response.IsSuccessStatusCode)
             {
-                var responseBody = await response.Content.ReadAsStringAsync();
-                return JsonConvert.DeserializeObject<VehiculePointageLine>(responseBody);
+                return await response.Content.ReadFromJsonAsync<VehiculePointageLine>();
             }
 
+            // 4. Gestion d'erreur centralisée
             await HandleErrorResponse(response);
             return null;
         }
 
-        public async Task<bool> DeleteLineAsync(Guid id)
+        public async Task<bool> DeleteLineAsync(Guid id, string projectNo)
         {
+            // Logique de vérification similaire à PurchaseRequest
             var response = await _httpClient.DeleteAsync($"vehiculePointageLines({id})");
+            
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
             return response.IsSuccessStatusCode;
         }
     }

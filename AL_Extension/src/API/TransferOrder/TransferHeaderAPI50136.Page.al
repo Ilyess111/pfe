@@ -45,10 +45,4 @@ page 50136 "TransferHeaderAPI"
         }
     }
 
-    trigger OnInsertRecord(BelowxRec: Boolean): Boolean
-    begin
-        if Rec."No." = '' then
-            Rec.Insert(true);
-        exit(false);
-    end;
 }

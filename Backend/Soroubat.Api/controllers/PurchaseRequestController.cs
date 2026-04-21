@@ -141,6 +141,34 @@ namespace Soroubat.Api.Controllers
             }
         }
 
+[HttpPost("{id}/submit")]
+public async Task<IActionResult> SubmitForApproval(Guid id)
+{
+    try
+    {
+        var projectNo = UserProjectNo;
+        if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+
+        var success = await _service.SubmitForApprovalAsync(id, projectNo);
+
+        if (success) return Ok(new { message = "Demande soumise pour approbation avec succès." });
+
+        return NotFound(new { message = "Demande introuvable." });
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return Forbid(ex.Message);
+    }
+    catch (InvalidOperationException ex)
+    {
+        return BadRequest(new { message = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new { message = ex.Message });
+    }
+}
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteHeader(Guid id)
         {
@@ -183,8 +211,7 @@ namespace Soroubat.Api.Controllers
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
-            }
+                return StatusCode(403, new { message = ex.Message });            }
             catch (Exception ex)
             {
                 return BadRequest(new { message = ex.Message });
