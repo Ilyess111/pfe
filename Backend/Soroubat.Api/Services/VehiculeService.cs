@@ -141,15 +141,6 @@ namespace Soroubat.Api.Services
             return null;
         }
 
-        public async Task<bool> DeleteLineAsync(Guid id, string projectNo)
-        {
-            // Logique de vérification similaire à PurchaseRequest
-            var response = await _httpClient.DeleteAsync($"vehiculePointageLines({id})");
-            
-            if (!response.IsSuccessStatusCode)
-                await HandleErrorResponse(response);
 
-            return response.IsSuccessStatusCode;
-        }
     }
 }

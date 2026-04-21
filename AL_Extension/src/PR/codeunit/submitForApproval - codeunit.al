@@ -3,12 +3,11 @@ codeunit 52048897 "PurchaseRequestStatusMgt"
     procedure SubmitForApproval(var PurchaseRequest: Record "Purchase Request")
     begin
         PurchaseRequest.TestField(Statut, PurchaseRequest.Statut::Open);
-        PurchaseRequest.SuspendStatusCheck(true);
+        
+        // Activer le flag directement sur le record → persisté dans la transaction
+        PurchaseRequest."Bypass Status Check" := true;
         PurchaseRequest.Statut := PurchaseRequest.Statut::"To Approve";
-        if not PurchaseRequest.Modify(true) then begin
-            PurchaseRequest.SuspendStatusCheck(false);  // Toujours réinitialiser
-            Error('Échec de la mise à jour du statut.');
-        end;
-        PurchaseRequest.SuspendStatusCheck(false);
+        PurchaseRequest.Modify(true);
+        // Pas besoin de reset → OnModify le fait automatiquement
     end;
 }

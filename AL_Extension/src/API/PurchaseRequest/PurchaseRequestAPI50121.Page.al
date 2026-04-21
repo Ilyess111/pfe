@@ -55,6 +55,11 @@ page 50121 "PurchaseRequestAPI"
                             StatusMgt.SubmitForApproval(Rec);
                     end;
                 }
+                field(bypassStatusCheck; Rec."Bypass Status Check") 
+                { 
+                    Caption = 'Bypass Status Check'; 
+                    Editable = false; 
+                }
             }
 
             part(purchaseRequestLines; "PurchaseRequestLineAPI")

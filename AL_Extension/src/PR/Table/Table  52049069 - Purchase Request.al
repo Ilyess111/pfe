@@ -2161,6 +2161,12 @@ Table 52049069 "Purchase Request"
             // OptionMembers = Ouvert,"Lancé","Partiellement Pris En Charge","Totallement Pris En Charge",Archiver;
 
         }
+        field(50299; "Bypass Status Check"; Boolean)
+        {
+            Caption = 'Bypass Status Check';
+            DataClassification = SystemMetadata;
+        }
+
         field(50218; Approve; Boolean)
         {
             Caption = 'Approve';
@@ -3007,11 +3013,14 @@ Table 52049069 "Purchase Request"
     // end;
 
 
-    trigger OnModify()
-    begin
-        if StatusCheckSuspended then exit;  
-        TestField(Statut, Statut::Open);
-    end;
+    // trigger OnModify()
+    // begin
+    //     if Rec."Bypass Status Check" then begin
+    //         Rec."Bypass Status Check" := false; // Réinitialiser après usage
+    //         exit;
+    //     end;
+    //     TestField(Statut, Statut::Open);
+    // end;
 
     var
         Text003: Label 'You cannot rename a %1.';

@@ -195,7 +195,7 @@ public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, str
 
 public async Task<bool> SubmitForApprovalAsync(Guid id, string projectNo)
 {
-    // 1. Vérification sécurité
+    // 1. Vérification sécurité + récupération ETag
     var getResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
     if (!getResponse.IsSuccessStatusCode) return false;
 
@@ -210,8 +210,9 @@ public async Task<bool> SubmitForApprovalAsync(Guid id, string projectNo)
 
     var etag = getResponse.Headers.ETag?.ToString();
 
-    // 2. PATCH avec le champ déclencheur
-    var json = """{"submitForApproval": true}""";
+    // 2. PATCH direct sur le statut — le flag "Bypass Status Check" 
+    //    est géré côté AL (Codeunit + OnModify de la table)
+    var json = """{"statut": "To Approve"}""";
     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
     var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
