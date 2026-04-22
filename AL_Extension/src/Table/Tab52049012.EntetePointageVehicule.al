@@ -65,7 +65,6 @@ Table 52049012 "Entete Pointage Vehicule"
         }
         field(11; Statut; Option)
         {
-            Editable = false;
             OptionMembers = Ouvert,"Validé";
         }
         field(12; "Heure Travail Theorique"; Integer)

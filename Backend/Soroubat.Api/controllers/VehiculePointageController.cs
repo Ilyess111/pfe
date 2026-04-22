@@ -114,13 +114,36 @@ public class VehiculePointageController : ControllerBase
         }
     }
 
+    [HttpPost("header/{id}/valider")]
+public async Task<IActionResult> ValiderPointage(Guid id)
+{
+    try
+    {
+        var projectNo = UserProjectNo;
+        if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
 
-        // [HttpPost("line")]
-        // public async Task<IActionResult> AddLine([FromBody] VehiculePointageLine line)
-        // {
-        //     var result = await _vehiculeService.AddLineAsync(line);
-        //     return Ok(result);
-        // }
+        var success = await _vehiculeService.ValiderPointageAsync(id, projectNo);
+
+        if (success) return Ok(new { message = "Pointage validé avec succès." });
+
+        return NotFound(new { message = "Pointage introuvable." });
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        return StatusCode(403, new { message = ex.Message });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return BadRequest(new { message = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new { message = ex.Message });
+    }
+}
+
+
+
 
         [HttpPatch("line/{id}")]
         public async Task<IActionResult> UpdateLine(Guid id, [FromBody] VehiculePointageLine line)
@@ -140,11 +163,6 @@ public class VehiculePointageController : ControllerBase
             }
         }
 
-        // [HttpDelete("line/{id}")]
-        // public async Task<IActionResult> DeleteLine(Guid id)
-        // {
-        //     var success = await _vehiculeService.DeleteLineAsync(id);
-        //     return success ? Ok() : BadRequest("Erreur lors de la suppression de la ligne");
-        // }
+
     }
 }

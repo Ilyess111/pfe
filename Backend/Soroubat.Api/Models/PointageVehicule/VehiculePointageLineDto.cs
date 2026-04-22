@@ -36,5 +36,8 @@ namespace Soroubat.Api.Models
 
         [JsonPropertyName("breakdownMotiv")]
         public string? BreakdownMotiv { get; set; }
+        
+        [JsonPropertyName("marche")]
+        public string? Marche { get; set; }
     }
 }

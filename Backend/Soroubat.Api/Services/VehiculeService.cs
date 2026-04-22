@@ -115,6 +115,37 @@ namespace Soroubat.Api.Services
             return response.IsSuccessStatusCode;
         }
 
+        public async Task<bool> ValiderPointageAsync(Guid id, string projectNo)
+{
+    // 1. SÉCURITÉ : Récupérer le header et vérifier le projet
+    var existing = await GetHeaderByIdAsync(id, projectNo);
+    if (existing == null) return false;
+
+    // 2. VALIDATION MÉTIER : Vérifier que le statut est bien "Ouvert"
+    // ⚠️ Remplacer "Ouvert" par la valeur exacte de ton enum AL si différente
+    if (!existing.Status.Equals("Ouvert", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException(
+            $"Impossible de valider : le statut actuel est '{existing.Status}', attendu 'Ouvert'.");
+
+    // 3. PATCH direct sur le statut
+    // ⚠️ Remplacer "Validé" par la valeur exacte de ton enum AL si différente
+    var json = """{"status": "Validé"}""";
+    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+    var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"vehiculePointageHeaders({id})")
+    {
+        Content = content
+    };
+    request.Headers.TryAddWithoutValidation("If-Match", "*");
+
+    var response = await _httpClient.SendAsync(request);
+
+    if (!response.IsSuccessStatusCode)
+        await HandleErrorResponse(response);
+
+    return response.IsSuccessStatusCode;
+}
+
         public async Task<VehiculePointageLine?> UpdateLineAsync(Guid id, VehiculePointageLine line, string projectNo)
         {
             // 1. Configuration de la sérialisation (ignorer les nulls pour ne pas écraser BC)

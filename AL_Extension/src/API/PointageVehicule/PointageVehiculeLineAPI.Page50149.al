@@ -29,6 +29,8 @@ page 50149 "APIVehiculePointageLines"
                 field(endIndex; Rec."Index Final") { Caption = 'End Index'; }
                 field(fuelConsumed; Rec.Gasoil) { Caption = 'Fuel Consumed'; }
                 field(breakdownMotiv; Rec."Motif Panne") { Caption = 'Breakdown Motive'; }
+                field(Marche;Rec.Marche) { Caption = 'Job No'; } 
+                
             }
         }
     }

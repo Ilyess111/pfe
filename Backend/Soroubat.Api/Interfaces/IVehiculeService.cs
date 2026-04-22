@@ -13,8 +13,7 @@ namespace Soroubat.Api.Interfaces
         Task<VehiculePointageHeader?> CreateHeaderAsync(VehiculePointageHeader header, string projectNo);
         Task<VehiculePointageHeader?> UpdateHeaderAsync(Guid id, VehiculePointageHeader header, string projectNo);
         Task<bool> DeleteHeaderAsync(Guid id, string projectNo);
-        // Task<bool> DeleteHeaderAsync(Guid id);
-
+        Task<bool> ValiderPointageAsync(Guid id, string projectNo);
 
         Task<VehiculePointageLine?> UpdateLineAsync(Guid id, VehiculePointageLine line, string projectNo);
     }
