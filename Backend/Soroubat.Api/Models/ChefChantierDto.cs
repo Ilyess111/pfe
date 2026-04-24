@@ -19,5 +19,8 @@ namespace Soroubat.Api.Models
 
         [JsonProperty("actif")]
         public bool Actif { get; set; }
+
+        [JsonProperty("idApprobateur")]
+        public string IdApprobateur { get; set; }
     }
 }

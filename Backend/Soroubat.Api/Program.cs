@@ -98,7 +98,7 @@ builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(
 
 builder.Services.AddHttpClient<ITransferService, TransferService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
-// ON FORCE UN CLIENT DIFFÉRENT POUR LE LOOKUP ( odata )
+// on a utilisé odata pour ce service
 builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
@@ -109,6 +109,12 @@ builder.Services.AddHttpClient<IChefChantierService, ChefChantierService>(Config
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 builder.Services.AddHttpClient<IVehiculeService, VehiculeService>(ConfigureBCClient)
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<IVehiculeService, VehiculeService>(ConfigureBCClient)
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+
+builder.Services.AddHttpClient<IGasoilService, GasoilService>(ConfigureBCClient)
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 builder.Services.AddScoped<IAuthService, AuthService>();
