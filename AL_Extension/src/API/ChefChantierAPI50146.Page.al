@@ -36,6 +36,10 @@ page 50146 "ChefChantierAPI"
                 {
                     Caption = 'N° Projet géré';
                 }
+                field(idApprobateur; Rec."Id Approbateur")
+                {
+                    Caption = 'Id Approbateur';
+                }
             }
         }
     }

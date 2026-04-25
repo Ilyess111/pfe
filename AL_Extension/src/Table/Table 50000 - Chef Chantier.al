@@ -40,11 +40,18 @@ table 50000 "Chef Chantier"
             Caption = 'N° Projet géré';
             TableRelation = Job."No.";
         }
+
+        field(6; "Id Approbateur"; Code[50])
+        {
+            Caption = 'Id Approbateur';
+            DataClassification = EndUserIdentifiableInformation;
+            TableRelation = "User Setup"."User ID";
+        }
     }
 
 
 
-keys
+    keys
     {
         key(PK; "Id")
         {

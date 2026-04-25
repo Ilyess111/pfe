@@ -16,6 +16,8 @@ page 50147 "Chef Chantier List"
                 field("Adresse Email"; Rec."Adresse Email") { ApplicationArea = All; }
                 field("Num Projet"; Rec."Num Projet") { ApplicationArea = All; }
                 field(Actif; Rec.Actif) { ApplicationArea = All; }
+                field(idApprobateur; Rec."Id Approbateur") { ApplicationArea = All; }
+
             }
         }
     }
