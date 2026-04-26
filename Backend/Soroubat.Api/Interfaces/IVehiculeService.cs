@@ -14,7 +14,12 @@ namespace Soroubat.Api.Interfaces
         Task<VehiculePointageHeader?> UpdateHeaderAsync(Guid id, VehiculePointageHeader header, string projectNo);
         Task<bool> DeleteHeaderAsync(Guid id, string projectNo);
         Task<bool> ValiderPointageAsync(Guid id, string projectNo);
-
         Task<VehiculePointageLine?> UpdateLineAsync(Guid id, VehiculePointageLine line, string projectNo);
+
+        //pour le service d'alertes uniquement
+        Task<IEnumerable<VehiculePointageHeader>> GetHeadersWithLinesAsync(string projectNo);
+
+
+        
     }
 }

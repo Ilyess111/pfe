@@ -16,37 +16,38 @@ namespace Soroubat.Api.Services
             _logger = logger;
         }
 
-        public async Task<JsonElement> GetLookupDataAsync(string entitySetName, string? filter = null)
-        {
-            try
-            {
-                var requestUri = entitySetName; 
+public async Task<JsonElement> GetLookupDataAsync(
+    string entitySetName,
+    string numProjet,
+    string? additionalFilter = null)
+{
+    string? projectFilter = entitySetName switch
+    {
+        "projects"     => $"code eq '{numProjet}'",
+        "projectTasks" => $"projectNo eq '{numProjet}'",
+        _              => null
+    };
 
-                if (!string.IsNullOrEmpty(filter))
-                {
-                    requestUri += $"?$filter={filter}";
-                }
+    var filters = new[] { projectFilter, additionalFilter }
+        .Where(f => !string.IsNullOrEmpty(f))
+        .ToList();
 
-                // DEBUG : Ajoute cette ligne pour voir l'URL FINALE dans ta console
-                var fullPath = new Uri(_httpClient.BaseAddress, requestUri);
-                _logger.LogInformation($"URL RÉELLE APPELÉE : {fullPath}");
+    var requestUri = entitySetName;
+    if (filters.Any())
+        requestUri += $"?$filter={string.Join(" and ", filters)}";
 
-                var response = await _httpClient.GetAsync(requestUri);
+    _logger.LogInformation($"[Lookup] URL : {new Uri(_httpClient.BaseAddress!, requestUri)}");
 
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError($"Erreur BC ({response.StatusCode}): {errorContent}");
-                    throw new HttpRequestException($"Erreur lors de la récupération des données : {response.StatusCode}");
-                }
+    var response = await _httpClient.GetAsync(requestUri);
 
-                return await response.Content.ReadFromJsonAsync<JsonElement>();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Exception lors de l'accès au lookup {entitySetName}");
-                throw;
-            }
-        }
+    if (!response.IsSuccessStatusCode)
+    {
+        var errorContent = await response.Content.ReadAsStringAsync();
+        _logger.LogError($"Erreur BC ({response.StatusCode}): {errorContent}");
+        throw new HttpRequestException($"Erreur lookup : {response.StatusCode}");
     }
+
+    return await response.Content.ReadFromJsonAsync<JsonElement>();
+}
+}
 }

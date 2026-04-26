@@ -26,6 +26,12 @@ namespace Soroubat.Api.Models
         [JsonPropertyName("fileNo")]
         public string? FileNo { get; set; }
 
+        [JsonPropertyName("startIndex")]
+        public decimal? StartIndex { get; set; }
+
+        [JsonPropertyName("endIndex")]
+        public decimal? EndIndex { get; set; }
+
         [JsonPropertyName("gasoilLines")]
         public List<GasoilLine> Lines { get; set; } = new List<GasoilLine>();
     }

@@ -13,5 +13,9 @@ namespace Soroubat.Api.Interfaces
         Task<GasoilLine?> CreateLineAsync(GasoilLine line, string projectNo);
         Task<GasoilLine?> UpdateLineAsync(Guid id, GasoilLine line, string projectNo);
         Task<bool> DeleteLineAsync(Guid id, string projectNo);
+        
+        // pour le service d'alertes uniquement
+        Task<IEnumerable<GasoilHeader>> GetHeadersWithLinesAsync(string projectNo);
+
     }
 }

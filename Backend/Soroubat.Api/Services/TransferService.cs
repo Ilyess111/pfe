@@ -28,6 +28,18 @@ namespace Soroubat.Api.Services
             return result?.Value ?? Enumerable.Empty<TransferHeaderDto>();
         }
 
+        public async Task<IEnumerable<TransferHeaderDto>> GetAllTransfersWithLinesAsync(string projectNo)
+        {
+            var filter = $"$filter=chantierDestination eq '{projectNo}'";
+            var response = await _httpClient.GetAsync($"transferHeaders?{filter}&$expand=transferLines");
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<TransferHeaderDto>>();
+            return result?.Value ?? Enumerable.Empty<TransferHeaderDto>();
+        }
+
         public async Task<TransferHeaderDto?> GetTransferByIdAsync(Guid id, string projectNo)
         {
             var url = $"transferHeaders({id})?$expand=transferLines";

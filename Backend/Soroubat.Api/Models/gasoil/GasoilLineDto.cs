@@ -20,6 +20,10 @@ namespace Soroubat.Api.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? VehicleNo { get; set; }
 
+        [JsonPropertyName("vehiclePlate")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? VehiclePlate { get; set; }
+
         [JsonPropertyName("quantity")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public decimal? Quantity { get; set; }

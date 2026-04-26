@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Soroubat.Api.Services;
+using Soroubat.Api.Interfaces;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;

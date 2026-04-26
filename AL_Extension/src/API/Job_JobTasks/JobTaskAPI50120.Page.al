@@ -57,6 +57,11 @@ page 50120 "JobTaskAPI"
                 field(initialAmount; Rec."Initial Amount") { Caption = 'Initial Amount'; Editable = false; }
                 // le champ is blocked est utilisé pour indiquer si la tâche est bloquée pour des raisons administratives, de sécurité ou autres
                 field(isBlocked; Rec.Blocked) { Caption = 'Is Blocked'; Editable = false; }
+                field(usageTotalCost; Rec."Usage (Total Cost)")
+                {
+                    Caption = 'Usage Total Cost';
+                    Editable = false;
+                }
             }
         }
     }
@@ -66,5 +71,6 @@ page 50120 "JobTaskAPI"
         // Calcul des FlowFields pour Angular (en temps réel)
         // On exécute les formules CalcFormula définies dans la tableext 50877 pour obtenir les totaux
         Rec.CalcFields("Quantity Shipped");
+        Rec.CalcFields("Usage (Total Cost)");
     end;
 }

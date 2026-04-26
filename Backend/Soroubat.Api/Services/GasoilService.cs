@@ -235,5 +235,24 @@ namespace Soroubat.Api.Services
 
             return response.IsSuccessStatusCode;
         }
+
+        public async Task<IEnumerable<GasoilHeader>> GetHeadersWithLinesAsync(string projectNo)
+        {
+            var url = $"gasoilHeaders?$filter=jobNo eq '{projectNo}'&$expand=gasoilLines";
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                return Enumerable.Empty<GasoilHeader>();
+
+            try
+            {
+                var result = await response.Content.ReadFromJsonAsync<BCResponse<GasoilHeader>>();
+                return result?.Value ?? Enumerable.Empty<GasoilHeader>();
+            }
+            catch (JsonException)
+            {
+                return Enumerable.Empty<GasoilHeader>();
+            }
+        }
     }
 }

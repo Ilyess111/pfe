@@ -4,8 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
-using Soroubat.Api.Interfaces; // Assurez-vous d'avoir cet espace de noms pour IChefChantierService
-
+using Soroubat.Api.Interfaces;
 namespace Soroubat.Api.Services
 {
     public class StockService : IStockService
@@ -19,29 +18,28 @@ namespace Soroubat.Api.Services
 
     public async Task<List<StockChantierDto>> GetStockByProjectAsync(string projectNo)
     {
-        // Filtrage direct dans Business Central via OData
-        var stockResponse = await _httpClient.GetAsync($"itemLedgerEntries?$filter=jobNo eq '{projectNo}'");    
+        var stockResponse = await _httpClient.GetAsync($"itemLedgerEntries?$filter=jobNo eq '{projectNo}'");
 
-        if (!stockResponse.IsSuccessStatusCode) 
+        if (!stockResponse.IsSuccessStatusCode)
             return new List<StockChantierDto>();
 
         var data = await stockResponse.Content.ReadFromJsonAsync<BCResponse<StockChantierDto>>();
 
-        if (data?.Value == null) 
+        if (data?.Value == null)
             return new List<StockChantierDto>();
 
-        // Agrégation par article et magasin (Location)
         return data.Value
             .GroupBy(s => new { s.ItemNo, s.LocationCode, s.ItemDescription })
             .Select(g => new StockChantierDto
             {
-                ItemNo = g.Key.ItemNo,
+                ItemNo          = g.Key.ItemNo,
                 ItemDescription = g.Key.ItemDescription,
-                LocationCode = g.Key.LocationCode,
-                Quantity = g.Sum(x => x.Quantity), // Somme des entrées/sorties
-                JobNo = projectNo
+                LocationCode    = g.Key.LocationCode,
+                Quantity        = g.Sum(x => x.Quantity),
+                JobNo           = projectNo,
+                LastPostingDate = g.Max(x => x.PostingDate) 
             })
-            .Where(x => x.Quantity != 0) // On ne montre que ce qui est en stock
+            .Where(x => x.Quantity != 0)
             .ToList();
     }
 }

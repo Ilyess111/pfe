@@ -118,6 +118,7 @@ builder.Services.AddHttpClient<IGasoilService, GasoilService>(ConfigureBCClient)
 .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAlertService, AlertService>();
 
 builder.Services.AddCors(opt => opt.AddPolicy("AllowAngular", p => 
     p.WithOrigins("http://localhost:4200").AllowAnyMethod().AllowAnyHeader().AllowCredentials()));

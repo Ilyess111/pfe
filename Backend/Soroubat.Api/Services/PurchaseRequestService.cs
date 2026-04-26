@@ -124,40 +124,7 @@ public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, str
     return true;
 }
 
-        // public async Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
-        // {
-        //     // 1. Récupérer l'existant pour avoir l'ETag
-        //     var responseGet = await _httpClient.GetAsync($"purchaseRequests({id})");
-        //     if (!responseGet.IsSuccessStatusCode) return false;
 
-        //     // Extraire l'ETag des en-têtes de la réponse
-        //     var etag = responseGet.Headers.ETag?.ToString();
-
-        //     // 2. Préparer la requête PATCH
-        //     var json = JsonSerializer.Serialize(header, new JsonSerializerOptions { 
-        //         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
-        //     });
-        //     var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-        //     var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
-        //     {
-        //         Content = content
-        //     };
-
-        //     // 3. Ajouter le jeton de concurrence (ETag)
-        //     // "*" signifie "forcer la mise à jour peu importe la version" (Pratique pour les tests)
-        //     // Pour être rigoureux, utilisez la variable 'etag' récupérée plus haut.
-        //     request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
-
-        //     var responsePatch = await _httpClient.SendAsync(request);
-
-        //     if (!responsePatch.IsSuccessStatusCode)
-        //     {
-        //         await HandleErrorResponse(responsePatch);
-        //     }
-
-        //     return responsePatch.IsSuccessStatusCode;
-        // }
 
         public async Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
 {

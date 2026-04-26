@@ -17,7 +17,10 @@ namespace Soroubat.Api.Models
         public decimal InitialQuantity { get; set; }
         public string InitialUoM { get; set; } = string.Empty;
         public decimal InitialAmount { get; set; }
+        [JsonPropertyName("usageTotalCost")]
+        public decimal UsageTotalCost { get; set; }
         public bool IsBlocked { get; set; }
+        
     }
 
 }

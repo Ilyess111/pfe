@@ -7,7 +7,7 @@ page 50134 "VehiculeLookupAPI"
     APIVersion = 'v1.0';
     EntityName = 'vehicule';
     EntitySetName = 'vehicules';
-    SourceTable = "Véhicule"; // Nom exact de ta table
+    SourceTable = "Véhicule"; 
     InsertAllowed = false;
     ModifyAllowed = false;
 
@@ -18,8 +18,9 @@ page 50134 "VehiculeLookupAPI"
             repeater(GroupName)
             {
                 field(code; Rec."N° Vehicule") { } 
-                
                 field(designation; Rec."Désignation") { }
+                field(statut; Rec.Statut) { }
+
             }
         }
     }

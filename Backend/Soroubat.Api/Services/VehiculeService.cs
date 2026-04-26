@@ -172,6 +172,18 @@ namespace Soroubat.Api.Services
             return null;
         }
 
+        public async Task<IEnumerable<VehiculePointageHeader>> GetHeadersWithLinesAsync(string projectNo)
+        {
+            var url = $"vehiculePointageHeaders?$filter=jobNo eq '{projectNo}'&$expand=vehiculePointageLines";
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<VehiculePointageHeader>>();
+            return result?.Value ?? Enumerable.Empty<VehiculePointageHeader>();
+        }
+
 
     }
 }

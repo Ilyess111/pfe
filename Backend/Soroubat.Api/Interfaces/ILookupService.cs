@@ -4,6 +4,6 @@ namespace Soroubat.Api.Interfaces
 {
     public interface ILookupService
     {
-        Task<JsonElement> GetLookupDataAsync(string entitySetName, string? filter = null);
+        Task<JsonElement> GetLookupDataAsync(string entitySetName, string numProjet, string? additionalFilter = null);
     }
 }
