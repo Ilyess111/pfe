@@ -1,92 +1,108 @@
+using Microsoft.Extensions.Logging;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
 
 namespace Soroubat.Api.Services
 {
+    /// <summary>
+    /// Service d'alertes intelligentes.
+    /// Analyse les données de chaque domaine métier et génère des alertes
+    /// classées par sévérité (Critical > Warning) pour le projet donné.
+    /// Toutes les méthodes sont fail-safe : une erreur d'accès aux données
+    /// retourne une liste vide sans bloquer les autres domaines.
+    /// </summary>
     public class AlertService : IAlertService
     {
-        private readonly ISiteManagementService _siteService;
-        private readonly IPurchaseRequestService _purchaseService; 
-        private readonly ITransferService _transferService; 
-        private readonly IStockService           _stockService;
-        private readonly IVehiculeService        _vehiculeService;
-        private readonly IGasoilService          _gasoilService;
+        private readonly ISiteManagementService _siteManagementService;
+        private readonly IPurchaseRequestService _purchaseRequestService;
+        private readonly ITransferService _transferService;
+        private readonly IStockService _stockService;
+        private readonly IVehiculeService _vehiculeService;
+        private readonly IGasoilService _gasoilService;
+        private readonly ILogger<AlertService> _logger;
 
+        // ─── SEUILS SITEMANAGEMENT ────────────────────────────────────────────────
+        private const int TaskDelayGraceDays  = 0;  // Tolérance zéro sur les retards
+        private const int NotStartedAfterDays = 3;  // Alerte si non démarrée 3 jours après la date de début
 
-        // Seuils SiteManagement
-        private const int TaskDelayGraceDays    = 0;
-        private const int NotStartedAfterDays   = 3;
-
-        // Seuils PurchaseRequest
-        private const int PendingApprovalMaxDays = 5;  // Alerte si "To Approve" depuis plus de 5 jours
+        // ─── SEUILS PURCHASEREQUEST ───────────────────────────────────────────────
+        private const int PendingApprovalMaxDays = 5;  // Alerte si "To Approve" > 5 jours sans réponse
         private const int DueDateGraceDays       = 0;  // Pas de tolérance sur la date d'échéance
 
-        // Seuils Transfer                                         
-        private const int InTransitMaxDays       = 3;  // Alerte si en transit depuis plus de 3 jours
-        private const int OpenTransferMaxDays    = 7;  // Alerte si ouvert sans expédition depuis plus de 7 jours
-        private const decimal PartialReceiptMinPct = 80m; // Alerte si reçu < 80 % de l'expédié
+        // ─── SEUILS TRANSFER ──────────────────────────────────────────────────────
+        private const int     InTransitMaxDays      = 3;   // Alerte si en transit > 3 jours
+        private const int     OpenTransferMaxDays   = 7;   // Alerte si ouvert sans expédition > 7 jours
+        private const decimal PartialReceiptMinPct  = 80m; // Alerte si reçu < 80 % de l'expédié
 
-        private const decimal StockCritiqueMin        = 5m;   // Alerte si quantité <= 5 unités
-        private const int     StockDormantJours       = 30;  // Alerte si aucun mouvement depuis 30 jours
+        // ─── SEUILS STOCK ─────────────────────────────────────────────────────────
+        private const decimal StockCritiqueMin  = 5m;  // Alerte si quantité ≤ 5 unités
+        private const int     StockDormantJours = 30;  // Alerte si aucun mouvement depuis 30 jours
 
-        private const decimal HeuresMaxJournee         = 12m;  // Alerte si hoursWorked > 12h
-        private const decimal CarburantMaxParHeure     = 15m;  // Alerte si fuelConsumed/hoursWorked > 15 L/h
-        private const int     PointageOuvertMaxJours   = 2;    // Alerte si pointage "Ouvert" depuis > 2 jours
-        // Seuils Gasoil                                          
-        private const int     FicheEnCoursMaxJours     = 2;    // Alerte si "En Cours" depuis > 2 jours
-        private const decimal QuantiteMaxParLigne      = 300m; // Alerte si une ligne dépasse 300 L
-        private const decimal ConsommationTotaleMax    = 800m; // Alerte si total journalier > 800 L
+        // ─── SEUILS VEHICULE ──────────────────────────────────────────────────────
+        private const decimal HeuresMaxJournee       = 12m; // Alerte si hoursWorked > 12h
+        private const decimal CarburantMaxParHeure   = 15m; // Alerte si fuelConsumed/hoursWorked > 15 L/h
+        private const int     PointageOuvertMaxJours = 2;   // Alerte si pointage "Ouvert" > 2 jours
 
+        // ─── SEUILS GASOIL ────────────────────────────────────────────────────────
+        private const int     FicheEnCoursMaxJours  = 2;    // Alerte si "En Cours" > 2 jours
+        private const decimal QuantiteMaxParLigne   = 300m; // Alerte si une ligne > 300 L
+        private const decimal ConsommationTotaleMax = 800m; // Alerte si total journalier > 800 L
 
         public AlertService(
-            ISiteManagementService siteService,
-            IPurchaseRequestService purchaseService,
+            ISiteManagementService siteManagementService,
+            IPurchaseRequestService purchaseRequestService,
             ITransferService transferService,
             IStockService stockService,
-            IVehiculeService        vehiculeService,
-            IGasoilService          gasoilService
-        )
+            IVehiculeService vehiculeService,
+            IGasoilService gasoilService,
+            ILogger<AlertService> logger)
         {
-            _siteService     = siteService;
-            _purchaseService = purchaseService;      
-            _transferService = transferService;
-            _stockService    = stockService;
-            _vehiculeService  = vehiculeService;
-            _gasoilService   = gasoilService;
+            _siteManagementService  = siteManagementService;
+            _purchaseRequestService = purchaseRequestService;
+            _transferService        = transferService;
+            _stockService           = stockService;
+            _vehiculeService        = vehiculeService;
+            _gasoilService          = gasoilService;
+            _logger                 = logger;
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 1 — SiteManagement (inchangée)
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── SITEMANAGEMENT ───────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetSiteManagementAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             List<JobTaskDto> tasks;
 
-            try { tasks = await _siteService.GetMyTasksAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                tasks = await _siteManagementService.GetTasksByProjectAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer les tâches pour le projet '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var task in tasks)
             {
-                // ALERTE 1 : Tâche bloquée
+                // Alerte 1 : Tâche bloquée
                 if (task.IsBlocked)
                 {
                     alerts.Add(new AlertDto
                     {
                         Type            = "TaskBlocked",
                         Severity        = "Critical",
-                        Title           = "Tâche bloquée",
+                        Title           = $"Tâche bloquée — {task.Description}",
                         Message         = $"La tâche \"{task.Description}\" ({task.TaskNo}) est marquée comme bloquée.",
                         RelatedEntityNo = task.TaskNo,
-                        RelatedEntityId = task.id
+                        RelatedEntityId = task.Id
                     });
                     continue;
                 }
 
-                // ALERTE 2 : Retard de tâche
+                // Alerte 2 : Retard de tâche
                 if (task.DateFin.HasValue
                     && task.DateFin.Value.Date.AddDays(TaskDelayGraceDays) < today
                     && task.ProgressPct < 100)
@@ -101,11 +117,11 @@ namespace Soroubat.Api.Services
                                         + $"{task.DateFin.Value:dd/MM/yyyy}. Retard : {joursRetard} jour(s). "
                                         + $"Avancement : {task.ProgressPct:F0} %.",
                         RelatedEntityNo = task.TaskNo,
-                        RelatedEntityId = task.id
+                        RelatedEntityId = task.Id
                     });
                 }
 
-                // ALERTE 3 : Tâche non démarrée
+                // Alerte 3 : Tâche non démarrée
                 if (task.DateDebut.HasValue
                     && task.DateDebut.Value.Date.AddDays(NotStartedAfterDays) < today
                     && task.ProgressPct == 0)
@@ -120,15 +136,14 @@ namespace Soroubat.Api.Services
                                         + $"{task.DateDebut.Value:dd/MM/yyyy} ({joursDepuis} jour(s) écoulés) "
                                         + "mais son avancement est encore à 0 %.",
                         RelatedEntityNo = task.TaskNo,
-                        RelatedEntityId = task.id
+                        RelatedEntityId = task.Id
                     });
                 }
 
-                // ALERTE 4 : Dépassement budget (version coût réel)
+                // Alerte 4 : Dépassement budget
                 if (task.InitialAmount > 0 && task.UsageTotalCost > task.InitialAmount)
                 {
-                    decimal depassementPct = ((task.UsageTotalCost - task.InitialAmount)
-                                             / task.InitialAmount) * 100;
+                    decimal depassementPct = ((task.UsageTotalCost - task.InitialAmount) / task.InitialAmount) * 100;
                     alerts.Add(new AlertDto
                     {
                         Type            = "BudgetOverrun",
@@ -138,36 +153,36 @@ namespace Soroubat.Api.Services
                                         + $"{task.UsageTotalCost:F2} sur un budget de {task.InitialAmount:F2} "
                                         + $"(dépassement de {depassementPct:F1} %).",
                         RelatedEntityNo = task.TaskNo,
-                        RelatedEntityId = task.id
+                        RelatedEntityId = task.Id
                     });
                 }
             }
 
-            return alerts
-                .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
-                .ThenBy(a => a.DetectedAt)
-                .ToList();
+            return SortAlerts(alerts);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 2 — PurchaseRequest
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── PURCHASEREQUEST ──────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetPurchaseRequestAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             IEnumerable<PurchaseRequestDto> requests;
 
-            try { requests = await _purchaseService.GetAllRequestsAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                requests = await _purchaseRequestService.GetAllRequestsAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer les demandes d'achat pour '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var req in requests)
             {
-                // ── ALERTE 1 : Demande rejetée non traitée ──────────────────────
-                // Une demande rejetée doit être corrigée et re-soumise par le chef.
-                // Si elle reste en statut "Rejected" sans action, c'est bloquant.
+                // Alerte 1 : Demande rejetée non traitée
                 if (string.Equals(req.Statut, "Rejected", StringComparison.OrdinalIgnoreCase))
                 {
                     alerts.Add(new AlertDto
@@ -180,18 +195,15 @@ namespace Soroubat.Api.Services
                         RelatedEntityNo = req.No,
                         RelatedEntityId = req.Id
                     });
-                    continue; // Inutile de vérifier d'autres règles sur une demande rejetée
+                    continue;
                 }
 
-                // ── ALERTE 2 : En attente d'approbation trop longtemps ──────────
-                // Une demande "To Approve" bloquée N jours sans réponse ralentit le chantier.
-                // On utilise orderDate comme proxy de la date de soumission.
+                // Alerte 2 : En attente d'approbation trop longtemps
                 if (string.Equals(req.Statut, "To Approve", StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(req.OrderDate)
                     && DateTime.TryParse(req.OrderDate, out var orderDate))
                 {
                     int joursAttente = (today - orderDate.Date).Days;
-
                     if (joursAttente > PendingApprovalMaxDays)
                     {
                         alerts.Add(new AlertDto
@@ -208,9 +220,7 @@ namespace Soroubat.Api.Services
                     }
                 }
 
-                // ── ALERTE 3 : Date d'échéance dépassée sans clôture ────────────
-                // Une demande dont la dueDate est dépassée et qui n'est pas "Released"
-                // ni "Rejected" ni "Closed" représente un risque d'approvisionnement.
+                // Alerte 3 : Date d'échéance dépassée sans clôture
                 var statutsTermines = new[] { "Released", "Rejected", "Closed" };
                 if (!string.IsNullOrEmpty(req.DueDate)
                     && DateTime.TryParse(req.DueDate, out var dueDate)
@@ -231,9 +241,7 @@ namespace Soroubat.Api.Services
                     });
                 }
 
-                // ── ALERTE 4 : Demande vide — aucun article saisi ───────────────
-                // Une demande "Open" avec un montant nul est probablement incomplète
-                // (header créé mais lignes oubliées).
+                // Alerte 4 : Demande vide — aucun article saisi
                 if (string.Equals(req.Statut, "Open", StringComparison.OrdinalIgnoreCase)
                     && (req.Amount == null || req.Amount == 0))
                 {
@@ -250,45 +258,37 @@ namespace Soroubat.Api.Services
                 }
             }
 
-            return alerts
-                .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
-                .ThenBy(a => a.DetectedAt)
-                .ToList();
+            return SortAlerts(alerts);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 3 — Transfer Order
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── TRANSFER ─────────────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetTransferAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             IEnumerable<TransferHeaderDto> transfers;
 
-            try { transfers = await _transferService.GetAllTransfersWithLinesAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                transfers = await _transferService.GetAllTransfersWithLinesAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer les transferts pour '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var transfer in transfers)
             {
-                // On parse postingDate une seule fois pour toutes les règles du header
-                DateTime? postingDate = null;
-                if (!string.IsNullOrEmpty(transfer.PostingDate)
-                    && DateTime.TryParse(transfer.PostingDate, out var parsedDate))
-                {
-                    postingDate = parsedDate;
-                }
+                DateTime? postingDate = ParseDate(transfer.PostingDate);
 
-                // ── ALERTE 1 : Transfert en transit trop longtemps ──────────────────
-                // Un transfert "In Transit" signifie que les marchandises ont quitté
-                // le magasin source mais n'ont pas encore été réceptionnées.
-                // Si cela dure plus de N jours, il y a un risque de perte ou de retard chantier.
+                // Alerte 1 : Transfert bloqué en transit
                 if (string.Equals(transfer.Status, "In Transit", StringComparison.OrdinalIgnoreCase)
                     && postingDate.HasValue)
                 {
                     int joursEnRoute = (today - postingDate.Value.Date).Days;
-
                     if (joursEnRoute > InTransitMaxDays)
                     {
                         alerts.Add(new AlertDto
@@ -307,14 +307,11 @@ namespace Soroubat.Api.Services
                     }
                 }
 
-                // ── ALERTE 2 : Transfert ouvert sans expédition ─────────────────────
-                // Un transfert "Open" signifie qu'il est créé mais pas encore expédié.
-                // S'il reste ouvert trop longtemps, c'est probablement un oubli ou un blocage.
+                // Alerte 2 : Transfert ouvert sans expédition
                 if (string.Equals(transfer.Status, "Open", StringComparison.OrdinalIgnoreCase)
                     && postingDate.HasValue)
                 {
                     int joursOuvert = (today - postingDate.Value.Date).Days;
-
                     if (joursOuvert > OpenTransferMaxDays)
                     {
                         alerts.Add(new AlertDto
@@ -331,26 +328,17 @@ namespace Soroubat.Api.Services
                     }
                 }
 
-                // ── ALERTES SUR LES LIGNES (nécessite $expand=transferLines) ────────
-                // GetAllTransfersAsync ne fait pas d'expand — on ne traite les lignes
-                // que si elles sont présentes dans la réponse (cas GetById avec expand).
-                // Pour l'endpoint /all, on récupère les transferts sans lignes par défaut.
-                // → Pour activer ces alertes en masse, voir la note d'architecture ci-dessous.
                 if (transfer.TransferLines == null || !transfer.TransferLines.Any())
                     continue;
 
                 foreach (var line in transfer.TransferLines)
                 {
-                    // ── ALERTE 3 : Réception partielle ──────────────────────────────
-                    // Une ligne où quantityShipped > 0 mais quantityReceived < 80 % de
-                    // quantityShipped signale que le chantier n'a pas tout reçu.
-                    // Cela peut indiquer une perte, un litige, ou un oubli de saisie.
+                    // Alerte 3 : Réception partielle
                     if (line.QuantityShipped.HasValue
                         && line.QuantityShipped > 0
                         && line.QuantityReceived.HasValue)
                     {
                         decimal pctRecu = (line.QuantityReceived.Value / line.QuantityShipped.Value) * 100;
-
                         if (pctRecu < PartialReceiptMinPct)
                         {
                             decimal manquant = line.QuantityShipped.Value - line.QuantityReceived.Value;
@@ -369,64 +357,58 @@ namespace Soroubat.Api.Services
                         }
                     }
 
-                    // ── ALERTE 4 : Ligne sans véhicule assigné ───────────────────────
-                    // Sur un transfert actif (In Transit ou Open), chaque ligne devrait
-                    // avoir un véhicule assigné pour assurer la traçabilité logistique.
-                    if (string.Equals(transfer.Status, "Open", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(transfer.Status, "In Transit", StringComparison.OrdinalIgnoreCase))
+                    // Alerte 4 : Ligne sans véhicule assigné
+                    bool transferActif = string.Equals(transfer.Status, "Open", StringComparison.OrdinalIgnoreCase)
+                                     || string.Equals(transfer.Status, "In Transit", StringComparison.OrdinalIgnoreCase);
+                    if (transferActif && string.IsNullOrWhiteSpace(line.NumVehicule))
                     {
-                        if (string.IsNullOrWhiteSpace(line.NumVehicule))
+                        alerts.Add(new AlertDto
                         {
-                            alerts.Add(new AlertDto
-                            {
-                                Type            = "TransferNoVehicle",
-                                Severity        = "Warning",
-                                Title           = $"Véhicule non assigné — {transfer.No} / {line.ItemNo}",
-                                Message         = $"La ligne article {line.ItemNo} ({line.Description}) "
-                                                + $"du transfert n° {transfer.No} n'a pas de véhicule assigné. "
-                                                + "Saisissez le numéro du véhicule de transport.",
-                                RelatedEntityNo = transfer.No,
-                                RelatedEntityId = transfer.Id
-                            });
-                        }
+                            Type            = "TransferNoVehicle",
+                            Severity        = "Warning",
+                            Title           = $"Véhicule non assigné — {transfer.No} / {line.ItemNo}",
+                            Message         = $"La ligne article {line.ItemNo} ({line.Description}) "
+                                            + $"du transfert n° {transfer.No} n'a pas de véhicule assigné. "
+                                            + "Saisissez le numéro du véhicule de transport.",
+                            RelatedEntityNo = transfer.No,
+                            RelatedEntityId = transfer.Id
+                        });
                     }
                 }
             }
 
-            return alerts
-                .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
-                .ThenBy(a => a.DetectedAt)
-                .ToList();
+            return SortAlerts(alerts);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 4 — Stock Magasin
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── STOCK ────────────────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetStockAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             List<StockChantierDto> stocks;
 
-            try { stocks = await _stockService.GetStockByProjectAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                stocks = await _stockService.GetStockByProjectAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer le stock pour '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var stock in stocks)
             {
-                // Identifiant lisible pour les messages
                 string label = $"{stock.ItemNo} — {stock.ItemDescription} ({stock.LocationCode})";
 
-                // ── ALERTE 1 : Stock négatif ────────────────────────────────────────
-                // Un stock négatif indique une incohérence dans les écritures BC :
-                // plus de sorties que d'entrées enregistrées. C'est toujours une
-                // anomalie qui nécessite une vérification immédiate des mouvements.
+                // Alerte 1 : Stock négatif
                 if (stock.Quantity < 0)
                 {
                     alerts.Add(new AlertDto
                     {
-                        Type            = "StockNégatif",
+                        Type            = "StockNegatif",
                         Severity        = "Critical",
                         Title           = $"Stock négatif — {stock.ItemNo}",
                         Message         = $"L'article {label} présente un stock négatif "
@@ -434,12 +416,10 @@ namespace Soroubat.Api.Services
                                         + "Vérifiez les écritures de sortie dans Business Central.",
                         RelatedEntityNo = stock.ItemNo
                     });
-                    continue; // Stock négatif est prioritaire — pas besoin de vérifier le seuil critique
+                    continue;
                 }
 
-                // ── ALERTE 2 : Stock critique — quantité très faible ────────────────
-                // Un stock faible mais positif signale un risque de rupture imminente.
-                // Le seuil StockCritiqueMin est configurable selon les besoins métier.
+                // Alerte 2 : Stock critique
                 if (stock.Quantity > 0 && stock.Quantity <= StockCritiqueMin)
                 {
                     alerts.Add(new AlertDto
@@ -453,15 +433,10 @@ namespace Soroubat.Api.Services
                     });
                 }
 
-                // ── ALERTE 3 : Stock dormant — aucun mouvement récent ───────────────
-                // Un article sans mouvement depuis N jours peut indiquer :
-                // - une immobilisation inutile de ressources sur le chantier
-                // - un oubli de saisie des sorties de stock
-                // Cette alerte n'est déclenchée que si LastPostingDate est disponible.
+                // Alerte 3 : Stock dormant
                 if (stock.LastPostingDate.HasValue)
                 {
                     int joursDepuisDernierMvt = (today - stock.LastPostingDate.Value.Date).Days;
-
                     if (joursDepuisDernierMvt > StockDormantJours)
                     {
                         alerts.Add(new AlertDto
@@ -479,49 +454,42 @@ namespace Soroubat.Api.Services
                 }
             }
 
-            return alerts
-                .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
-                .ThenBy(a => a.DetectedAt)
-                .ToList();
+            return SortAlerts(alerts);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 5 — Pointage Véhicule
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── VEHICULE ─────────────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetVehiculeAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             IEnumerable<VehiculePointageHeader> headers;
 
-            try { headers = await _vehiculeService.GetHeadersWithLinesAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                headers = await _vehiculeService.GetHeadersWithLinesAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer les pointages véhicules pour '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var header in headers)
             {
-                // Parse de la date du pointage — champ "date" (Journee dans BC)
-                DateTime? pointageDate = null;
-                if (!string.IsNullOrEmpty(header.Date)
-                    && DateTime.TryParse(header.Date, out var pd))
-                {
-                    pointageDate = pd;
-                }
+                DateTime? pointageDate = ParseDate(header.Date);
 
-                // ── ALERTE 1 : Pointage ouvert non validé depuis trop longtemps ─────
-                // Un pointage "Ouvert" qui traîne plusieurs jours sans validation
-                // fausse les statistiques de coût véhicule et de consommation.
+                // Alerte 1 : Pointage non validé depuis trop longtemps
                 if (string.Equals(header.Status, "Ouvert", StringComparison.OrdinalIgnoreCase)
                     && pointageDate.HasValue)
                 {
                     int joursOuvert = (today - pointageDate.Value.Date).Days;
-
                     if (joursOuvert > PointageOuvertMaxJours)
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "PointageNonValidé",
+                            Type            = "PointageNonValide",
                             Severity        = joursOuvert > 5 ? "Critical" : "Warning",
                             Title           = $"Pointage non validé — {header.DocumentNo}",
                             Message         = $"Le pointage n° {header.DocumentNo} du "
@@ -533,23 +501,19 @@ namespace Soroubat.Api.Services
                     }
                 }
 
-                // Alertes sur les lignes — on ne traite que les headers avec lignes
                 if (header.Lines == null || !header.Lines.Any())
                     continue;
 
                 foreach (var line in header.Lines)
                 {
-                    string labelVehicule = $"Véhicule {line.VehiculeNo} ({line.Description}) "
-                                        + $"— pointage {header.DocumentNo}";
+                    string labelVehicule = $"Véhicule {line.VehiculeNo} ({line.Description}) — pointage {header.DocumentNo}";
 
-                    // ── ALERTE 2 : Véhicule surutilisé — trop d'heures journalières ─
-                    // Plus de 12h de travail pour un véhicule sur une journée est
-                    // anormal et peut signaler une erreur de saisie ou une surcharge.
-                    if (line.HoursWorked > HeuresMaxJournee)
+                    // Alerte 2 : Surutilisation véhicule
+                    if (line.HoursWorked.HasValue && line.HoursWorked > HeuresMaxJournee)
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "VehiculesurutilisÉ",
+                            Type            = "VehiculeSuprutilise",
                             Severity        = line.HoursWorked > HeuresMaxJournee * 1.5m ? "Critical" : "Warning",
                             Title           = $"Surutilisation — {line.VehiculeNo}",
                             Message         = $"{labelVehicule} : {line.HoursWorked:F1}h saisies "
@@ -560,11 +524,9 @@ namespace Soroubat.Api.Services
                         });
                     }
 
-                    // ── ALERTE 3 : Index incohérent — endIndex < startIndex ──────────
-                    // Un index final inférieur à l'index de départ est physiquement
-                    // impossible et indique une erreur de saisie (ex : chiffres inversés).
-                    if (line.EndIndex > 0
-                        && line.StartIndex > 0
+                    // Alerte 3 : Index incohérent
+                    if (line.EndIndex.HasValue && line.StartIndex.HasValue
+                        && line.EndIndex > 0 && line.StartIndex > 0
                         && line.EndIndex < line.StartIndex)
                     {
                         alerts.Add(new AlertDto
@@ -580,15 +542,13 @@ namespace Soroubat.Api.Services
                         });
                     }
 
-                    // ── ALERTE 4 : Panne sans motif justificatif ─────────────────────
-                    // Une ligne avec statut "Panne" doit obligatoirement avoir un motif
-                    // pour permettre le suivi de maintenance.
+                    // Alerte 4 : Panne sans motif
                     if (string.Equals(line.Status, "Panne", StringComparison.OrdinalIgnoreCase)
                         && string.IsNullOrWhiteSpace(line.BreakdownMotiv))
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "PanneSansMotiF",
+                            Type            = "PanneSansMotif",
                             Severity        = "Warning",
                             Title           = $"Panne non justifiée — {line.VehiculeNo}",
                             Message         = $"{labelVehicule} est marqué en panne "
@@ -599,15 +559,11 @@ namespace Soroubat.Api.Services
                         });
                     }
 
-                    // ── ALERTE 5 : Consommation carburant anormalement élevée ────────
-                    // On calcule le ratio L/h uniquement si les deux champs sont > 0.
-                    // Un ratio > seuil signale soit une panne moteur, soit une erreur de saisie.
-                    if (line.FuelConsumed.HasValue
-                        && line.FuelConsumed > 0
-                        && line.HoursWorked > 0)
+                    // Alerte 5 : Consommation carburant anormale
+                    if (line.FuelConsumed.HasValue && line.FuelConsumed > 0
+                        && line.HoursWorked.HasValue && line.HoursWorked > 0)
                     {
-                        decimal ratioLParH = line.FuelConsumed.Value / line.HoursWorked;
-
+                        decimal ratioLParH = line.FuelConsumed.Value / line.HoursWorked!.Value;
                         if (ratioLParH > CarburantMaxParHeure)
                         {
                             alerts.Add(new AlertDto
@@ -627,51 +583,43 @@ namespace Soroubat.Api.Services
                 }
             }
 
-            return alerts
-                .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
-                .ThenBy(a => a.DetectedAt)
-                .ToList();
+            return SortAlerts(alerts);
         }
 
-        // ────────────────────────────────────────────────────────────────────────
-        // PARTIE 6 — Gasoil
-        // ────────────────────────────────────────────────────────────────────────
+        // ─── GASOIL ───────────────────────────────────────────────────────────────
 
         public async Task<List<AlertDto>> GetGasoilAlertsAsync(string projectNo)
         {
             var alerts = new List<AlertDto>();
             IEnumerable<GasoilHeader> headers;
 
-            try { headers = await _gasoilService.GetHeadersWithLinesAsync(projectNo); }
-            catch { return alerts; }
+            try
+            {
+                headers = await _gasoilService.GetHeadersWithLinesAsync(projectNo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Alertes] Impossible de récupérer les fiches gasoil pour '{ProjectNo}'.", projectNo);
+                return alerts;
+            }
 
             var today = DateTime.Today;
 
             foreach (var header in headers)
             {
-                // Parse de la date de la fiche
-                DateTime? ficheDate = null;
-                if (!string.IsNullOrEmpty(header.Date)
-                    && DateTime.TryParse(header.Date, out var pd))
-                {
-                    ficheDate = pd;
-                }
+                DateTime? ficheDate   = ParseDate(header.Date);
+                string    labelFiche  = $"Fiche n° {header.DocumentNo}";
 
-                string labelFiche = $"Fiche n° {header.DocumentNo}";
-
-                // ── ALERTE 1 : Fiche non validée depuis trop longtemps ───────────────
-                // Une fiche "En Cours" doit être validée rapidement pour refléter
-                // la consommation réelle du jour. Un retard fausse les statistiques BC.
+                // Alerte 1 : Fiche non validée depuis trop longtemps
                 if (string.Equals(header.Status, "En Cours", StringComparison.OrdinalIgnoreCase)
                     && ficheDate.HasValue)
                 {
                     int joursOuvert = (today - ficheDate.Value.Date).Days;
-
                     if (joursOuvert > FicheEnCoursMaxJours)
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "GasoilFicheNonValidée",
+                            Type            = "GasoilFicheNonValidee",
                             Severity        = joursOuvert > 5 ? "Critical" : "Warning",
                             Title           = $"Fiche gasoil non validée — {header.DocumentNo}",
                             Message         = $"{labelFiche} du {ficheDate.Value:dd/MM/yyyy} "
@@ -683,13 +631,9 @@ namespace Soroubat.Api.Services
                     }
                 }
 
-                // ── ALERTE 2 : Index incohérent sur le header ────────────────────────
-                // L'index final de la cuve doit être supérieur à l'index de départ.
-                // Un index final inférieur est physiquement impossible — erreur de saisie.
-                if (header.StartIndex.HasValue
-                    && header.EndIndex.HasValue
-                    && header.StartIndex > 0
-                    && header.EndIndex > 0
+                // Alerte 2 : Index cuve incohérent
+                if (header.StartIndex.HasValue && header.EndIndex.HasValue
+                    && header.StartIndex > 0 && header.EndIndex > 0
                     && header.EndIndex < header.StartIndex)
                 {
                     alerts.Add(new AlertDto
@@ -705,14 +649,10 @@ namespace Soroubat.Api.Services
                     });
                 }
 
-                // Alertes sur les lignes
                 if (header.Lines == null || !header.Lines.Any())
                     continue;
 
-                // ── ALERTE 3 : Consommation totale journalière anormale ──────────────
-                // On agrège toutes les quantités des lignes de la fiche.
-                // Un total journalier excessif peut indiquer une erreur de saisie
-                // ou une fuite non déclarée sur la cuve.
+                // Alerte 3 : Consommation totale journalière anormale
                 decimal totalConsommation = header.Lines
                     .Where(l => l.Quantity.HasValue && l.Quantity > 0)
                     .Sum(l => l.Quantity!.Value);
@@ -739,14 +679,12 @@ namespace Soroubat.Api.Services
                         ? $"véhicule {line.VehicleNo} ({line.VehiclePlate})"
                         : $"véhicule {line.VehicleNo}";
 
-                    // ── ALERTE 4 : Ligne sans véhicule assigné ───────────────────────
-                    // Chaque ligne de distribution gasoil doit être liée à un véhicule
-                    // pour garantir la traçabilité de la consommation par engin.
+                    // Alerte 4 : Ligne sans véhicule assigné
                     if (string.IsNullOrWhiteSpace(line.VehicleNo))
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "GasoilLigneSansVéhicule",
+                            Type            = "GasoilLigneSansVehicule",
                             Severity        = "Warning",
                             Title           = $"Ligne sans véhicule — {header.DocumentNo}",
                             Message         = $"{labelFiche} : une ligne (n° {line.LineNo}) "
@@ -755,17 +693,15 @@ namespace Soroubat.Api.Services
                             RelatedEntityNo = header.DocumentNo,
                             RelatedEntityId = line.Id
                         });
-                        continue; // Inutile de vérifier la quantité d'une ligne sans véhicule
+                        continue;
                     }
 
-                    // ── ALERTE 5 : Quantité anormalement élevée sur une ligne ─────────
-                    // Une distribution unitaire excessive par véhicule signale soit
-                    // une erreur de saisie, soit un plein non autorisé.
+                    // Alerte 5 : Quantité anormalement élevée sur une ligne
                     if (line.Quantity.HasValue && line.Quantity > QuantiteMaxParLigne)
                     {
                         alerts.Add(new AlertDto
                         {
-                            Type            = "GasoilQuantitéLigneAnormale",
+                            Type            = "GasoilQuantiteLigneAnormale",
                             Severity        = line.Quantity > QuantiteMaxParLigne * 2 ? "Critical" : "Warning",
                             Title           = $"Quantité anormale — {header.DocumentNo} / {line.VehicleNo}",
                             Message         = $"{labelFiche} : distribution de {line.Quantity:F1} L "
@@ -779,10 +715,26 @@ namespace Soroubat.Api.Services
                 }
             }
 
-            return alerts
+            return SortAlerts(alerts);
+        }
+
+        // ─── HELPERS PRIVÉS ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Trie une liste d'alertes : Critical en premier, puis par date de détection.
+        /// Extrait en méthode pour éviter la duplication dans chaque méthode publique.
+        /// </summary>
+        private static List<AlertDto> SortAlerts(List<AlertDto> alerts) =>
+            alerts
                 .OrderBy(a => a.Severity == "Critical" ? 0 : 1)
                 .ThenBy(a => a.DetectedAt)
                 .ToList();
-        }
+
+        /// <summary>
+        /// Parse une chaîne de date BC en DateTime nullable.
+        /// Retourne null si la chaîne est vide ou invalide.
+        /// </summary>
+        private static DateTime? ParseDate(string? value) =>
+            !string.IsNullOrEmpty(value) && DateTime.TryParse(value, out var dt) ? dt : null;
     }
 }

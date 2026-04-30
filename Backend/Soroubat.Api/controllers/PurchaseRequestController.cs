@@ -1,244 +1,304 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
-using Microsoft.AspNetCore.Authorization;
-
 
 namespace Soroubat.Api.Controllers
 {
+    /// <summary>
+    /// Gestion des demandes d'achat chantier.
+    /// La création suit un flux en deux étapes : POST /header puis POST /lines.
+    /// Toutes les routes sont scopées au projet du chef de chantier extrait du JWT.
+    /// </summary>
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
     public class PurchaseRequestController : ControllerBase
     {
-        private readonly IPurchaseRequestService _service;
+        private readonly IPurchaseRequestService _purchaseRequestService;
 
-        public PurchaseRequestController(IPurchaseRequestService service)
+        private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? string.Empty;
+
+        public PurchaseRequestController(IPurchaseRequestService purchaseRequestService)
         {
-            _service = service;
+            _purchaseRequestService = purchaseRequestService;
         }
 
-        // Propriété d'aide pour extraire le projet du JWT
-        private string UserProjectNo => User.FindFirst("projectNo")?.Value;
+        // ─── EN-TÊTES ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Retourne toutes les demandes d'achat du projet du chef de chantier connecté.
+        /// </summary>
         [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<PurchaseRequestDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<IEnumerable<PurchaseRequestDto>>> GetAll()
         {
-            try 
-            {
-                var projectNo = UserProjectNo;
-                
-                // Sécurité : si le token n'a pas de projet, on interdit l'accès
-                if (string.IsNullOrEmpty(projectNo)) 
-                    return BadRequest("Aucun projet n'est assigné à votre compte.");
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return BadRequest(new { message = "Aucun projet assigné dans votre profil." });
 
-                // On appelle le service avec le filtre automatique
-                var requests = await _service.GetAllRequestsAsync(projectNo);
+            try
+            {
+                var requests = await _purchaseRequestService.GetAllRequestsAsync(UserProjectNo);
                 return Ok(requests);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-        [HttpGet("{id}")]
+        /// <summary>
+        /// Retourne une demande d'achat avec ses lignes.
+        /// </summary>
+        [HttpGet("{id:guid}")]
+        [ProducesResponseType(typeof(PurchaseRequestDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PurchaseRequestDto>> GetById(Guid id)
         {
-            try 
-            {
-                var projectNo = UserProjectNo; // Extrait du JWT
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-                // On passe l'ID et le projet autorisé au service
-                var request = await _service.GetRequestByIdAsync(id, projectNo);
-                
-                if (request == null) return NotFound(new { message = "Demande introuvable." });
-                
+            try
+            {
+                var request = await _purchaseRequestService.GetRequestByIdAsync(id, UserProjectNo);
+
+                if (request == null)
+                    return NotFound(new { message = "Demande d'achat introuvable." });
+
                 return Ok(request);
             }
             catch (UnauthorizedAccessException ex)
             {
-                // Retourne 403 si le chef de chantier essaie de voir un autre projet
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-
+        /// <summary>
+        /// Crée l'en-tête d'une nouvelle demande d'achat.
+        /// Le jobNo est automatiquement forcé depuis le JWT.
+        /// </summary>
         [HttpPost]
-        public async Task<ActionResult<PurchaseRequestDto>> CreateHeader([FromBody] PurchaseRequestDto requestDto)
+        [ProducesResponseType(typeof(PurchaseRequestDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PurchaseRequestDto>> CreateHeader([FromBody] PurchaseRequestDto headerDto)
         {
-            try 
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
             {
-                // On récupère le matricule du projet depuis le jeton JWT
-                var projectNo = UserProjectNo;
-                if (string.IsNullOrEmpty(projectNo)) 
-                    return Unauthorized("Aucun projet n'est associé à votre compte.");
-
-                // On appelle le service en lui passant le DTO et le projet forcé
-                var createdHeader = await _service.CreateHeaderAsync(requestDto, projectNo);
-                
-                if (createdHeader == null) 
-                    return BadRequest("Échec de la création de l'en-tête.");
-
-                return CreatedAtAction(nameof(GetById), new { id = createdHeader.Id }, createdHeader);
+                var created = await _purchaseRequestService.CreateHeaderAsync(headerDto, UserProjectNo);
+                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-
-        [HttpPost("lines")]
-        public async Task<IActionResult> CreateLines([FromBody] List<PurchaseRequestLineDto> lines)
-        {
-            try 
-            {
-                var projectNo = UserProjectNo;
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
-
-                if (lines == null || !lines.Any()) return BadRequest("La liste des lignes est vide.");
-
-                var success = await _service.CreateLinesAsync(lines, projectNo);
-                
-                if (success) return Ok(new { message = "Lignes créées avec succès." });
-                
-                return BadRequest("Erreur lors de la création de certaines lignes.");
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
-
-        [HttpPatch("{id}")]
+        /// <summary>
+        /// Met à jour les champs modifiables d'un en-tête de demande d'achat.
+        /// </summary>
+        [HttpPatch("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateHeader(Guid id, [FromBody] PurchaseRequestDto headerDto)
         {
-            try 
-            {
-                var projectNo = UserProjectNo; // Extrait du JWT
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-                var success = await _service.PatchHeaderAsync(id, headerDto, projectNo);
-                
-                if (success) return Ok(new { message = "En-tête mis à jour avec succès." });
-                
-                return NotFound("Demande d'achat introuvable.");
+            try
+            {
+                var success = await _purchaseRequestService.UpdateHeaderAsync(id, headerDto, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Demande d'achat introuvable." });
+
+                return Ok(new { message = "Demande d'achat mise à jour avec succès." });
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-[HttpPost("{id}/submit")]
-public async Task<IActionResult> SubmitForApproval(Guid id)
-{
-    try
-    {
-        var projectNo = UserProjectNo;
-        if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+        /// <summary>
+        /// Soumet une demande d'achat pour approbation (Open → To Approve).
+        /// </summary>
+        [HttpPost("{id:guid}/submit")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SubmitForApproval(Guid id)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-        var success = await _service.SubmitForApprovalAsync(id, projectNo);
+            try
+            {
+                var success = await _purchaseRequestService.SubmitForApprovalAsync(id, UserProjectNo);
 
-        if (success) return Ok(new { message = "Demande soumise pour approbation avec succès." });
+                if (!success)
+                    return NotFound(new { message = "Demande d'achat introuvable." });
 
-        return NotFound(new { message = "Demande introuvable." });
-    }
-    catch (UnauthorizedAccessException ex)
-    {
-        return Forbid(ex.Message);
-    }
-    catch (InvalidOperationException ex)
-    {
-        return BadRequest(new { message = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        return StatusCode(500, new { message = ex.Message });
-    }
-}
+                return Ok(new { message = "Demande soumise pour approbation avec succès." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
 
-        [HttpDelete("{id}")]
+        /// <summary>
+        /// Supprime une demande d'achat et ses lignes.
+        /// </summary>
+        [HttpDelete("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteHeader(Guid id)
         {
-            try 
-            {
-                var projectNo = UserProjectNo;
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-                var success = await _service.DeleteRequestAsync(id, projectNo);
-                
-                if (success) return NoContent(); // Succès 204 (Pas de contenu)
-                
-                return BadRequest("Impossible de supprimer la demande.");
+            try
+            {
+                var success = await _purchaseRequestService.DeleteRequestAsync(id, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Demande d'achat introuvable." });
+
+                return NoContent();
             }
             catch (UnauthorizedAccessException ex)
             {
-                // Retourne 403 Forbidden si le chef tente de supprimer le projet d'un autre
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
+        // ─── LIGNES ───────────────────────────────────────────────────────────────
 
-        [HttpPatch("lines/{id}")]
+        /// <summary>
+        /// Crée toutes les lignes d'un en-tête en une seule opération.
+        /// </summary>
+        [HttpPost("lines")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> CreateLines([FromBody] List<PurchaseRequestLineDto> lines)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            if (lines == null || !lines.Any())
+                return BadRequest(new { message = "La liste des lignes ne peut pas être vide." });
+
+            try
+            {
+                var success = await _purchaseRequestService.CreateLinesAsync(lines, UserProjectNo);
+
+                if (!success)
+                    return BadRequest(new { message = "Échec de la création des lignes." });
+
+                return StatusCode(StatusCodes.Status201Created, new { message = "Lignes créées avec succès." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Met à jour une ligne de demande d'achat.
+        /// </summary>
+        [HttpPatch("lines/{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateLine(Guid id, [FromBody] PurchaseRequestLineDto lineDto)
         {
-            try 
-            {
-                var projectNo = UserProjectNo;
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-                var success = await _service.PatchLineAsync(id, lineDto, projectNo);
-                
-                if (success) return Ok(new { message = "Ligne mise à jour avec succès." });
-                
-                return NotFound("Ligne introuvable.");
+            try
+            {
+                var success = await _purchaseRequestService.UpdateLineAsync(id, lineDto, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Ligne introuvable." });
+
+                return Ok(new { message = "Ligne mise à jour avec succès." });
             }
             catch (UnauthorizedAccessException ex)
             {
-                return StatusCode(403, new { message = ex.Message });            }
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-        [HttpDelete("lines/{id}")]
+        /// <summary>
+        /// Supprime une ligne de demande d'achat.
+        /// </summary>
+        [HttpDelete("lines/{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteLine(Guid id)
         {
-            try 
-            {
-                var projectNo = UserProjectNo; // Propriété privée qui lit le Claim "projectNo"
-                if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-                var success = await _service.DeleteLineAsync(id, projectNo);
-                
-                if (success) return NoContent(); // 204
-                
-                return BadRequest("Échec de la suppression de la ligne.");
+            try
+            {
+                var success = await _purchaseRequestService.DeleteLineAsync(id, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Ligne introuvable." });
+
+                return NoContent();
             }
             catch (UnauthorizedAccessException ex)
             {
-                // Si le chef de chantier essaie de supprimer la ligne d'un autre projet
-                return StatusCode(403, new { message = ex.Message });            }
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
     }

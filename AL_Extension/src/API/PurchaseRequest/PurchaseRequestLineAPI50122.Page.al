@@ -15,82 +15,86 @@ page 50122 "PurchaseRequestLineAPI"
     {
         area(Content)
         {
-            repeater(Control1)
+            repeater(GroupName)
             {
-                // Identifiants techniques
-                field(id; Rec.SystemId) 
-                { 
+                // --- Identifiants ---
+                field(id; Rec.SystemId)
+                {
                     Caption = 'Id';
-                    Editable = false; 
+                    Editable = false;
                 }
-                field(documentNo; Rec."Document No.") 
-                { 
+                field(documentNo; Rec."Document No.")
+                {
                     Caption = 'N° Document';
-                    Editable = true; 
                 }
-                field(lineNo; Rec."Line No.") 
-                { 
+                field(lineNo; Rec."Line No.")
+                {
                     Caption = 'N° Ligne';
-                    Editable = false; 
+                    Editable = false;
                 }
-                
-                // Champs fonctionnels
-                field(transferer; Rec."Transférer") 
-                { 
-                    Caption = 'Transférer';
-                }                
-                field(type; Rec.Type) 
-                { 
+
+                // --- Article ---
+                field(type; Rec.Type)
+                {
                     Caption = 'Type';
                 }
-                field(no; Rec."No.") 
-                { 
-                    Caption = 'N° Article/Compte';
+                field(no; Rec."No.")
+                {
+                    Caption = 'N° Article / Compte';
                 }
-                field(description; Rec.Description) 
-                { 
+                field(description; Rec.Description)
+                {
                     Caption = 'Description';
                 }
-                field(description2; Rec."Description 2") 
-                { 
+                field(description2; Rec."Description 2")
+                {
                     Caption = 'Description 2';
                 }
-                field(quantity; Rec.Quantity) 
-                { 
+                field(variantCode; Rec."Variant Code")
+                {
+                    Caption = 'Code variante';
+                }
+
+                // --- Quantité & Unité ---
+                field(quantity; Rec.Quantity)
+                {
                     Caption = 'Quantité';
                 }
-                field(unitOfMeasureCode; Rec."Unit of Measure Code") 
-                { 
-                    Caption = 'Code Unité';
-                }
-                field(locationCode; Rec."Location Code") 
-                { 
-                    Caption = 'Code Magasin';
-                }
-                field(variantCode; Rec."Variant Code") 
-                { 
-                    Caption = 'Code Variante';
+                field(unitOfMeasureCode; Rec."Unit of Measure Code")
+                {
+                    Caption = 'Code unité';
                 }
 
-                field(jobNo; Rec."Job No.") 
-                { 
-                    Caption = 'Project No.';
-                    Editable = true;
-                }
-                field(jobTaskNo; Rec."Job Task No.") 
-                { 
-                    Caption = 'Project Task No.';
+                // --- Localisation ---
+                field(locationCode; Rec."Location Code")
+                {
+                    Caption = 'Code magasin';
                 }
 
-                field(engin; Rec.Engin) 
-                { 
+                // --- Projet & Engin ---
+                field(jobNo; Rec."Job No.")
+                {
+                    Caption = 'N° Projet';
+                    // Forcé côté backend depuis le JWT — la valeur est toujours celle du projet du chef
+                }
+                field(jobTaskNo; Rec."Job Task No.")
+                {
+                    Caption = 'N° Tâche';
+                }
+                field(engin; Rec.Engin)
+                {
                     Caption = 'Code Engin';
                 }
 
-                field(lineAmount; Rec."Line Amount") 
-                { 
-                    Caption = 'Montant Ligne';
-                    Editable = false; 
+                // --- Options & Montant ---
+                field(transferer; Rec."Transférer")
+                {
+                    Caption = 'À transférer';
+                }
+                field(lineAmount; Rec."Line Amount")
+                {
+                    Caption = 'Montant ligne';
+                    Editable = false;
                 }
             }
         }

@@ -2,349 +2,335 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
-using Microsoft.Extensions.Logging;
 
-namespace Soroubat.Api.Services 
+namespace Soroubat.Api.Services
 {
-    public class PurchaseRequestService :  BaseService, IPurchaseRequestService 
+    /// <summary>
+    /// Service de gestion des demandes d'achat.
+    /// Toutes les opérations vérifient l'appartenance de la ressource au projet du chef connecté.
+    /// </summary>
+    public class PurchaseRequestService : BaseService, IPurchaseRequestService
     {
         private readonly HttpClient _httpClient;
         private readonly ILogger<PurchaseRequestService> _logger;
 
+        private static readonly JsonSerializerOptions _writeOptions = new()
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
-        public PurchaseRequestService(HttpClient httpClient , ILogger<PurchaseRequestService> logger)
+        public PurchaseRequestService(HttpClient httpClient, ILogger<PurchaseRequestService> logger)
         {
             _httpClient = httpClient;
             _logger = logger;
         }
 
+        // ─── EN-TÊTES ─────────────────────────────────────────────────────────────
 
         public async Task<IEnumerable<PurchaseRequestDto>> GetAllRequestsAsync(string projectNo)
         {
-            // On ajoute le filtre pour ne récupérer que les demandes du projet concerné
-            var url = $"purchaseRequests?$filter=jobNo eq '{projectNo}'";
-            
+            var url = $"purchaseRequests?$filter=jobNo eq '{ODataEncode(projectNo)}'";
+            _logger.LogInformation("[PurchaseRequest] GET {Url}", url);
+
             var response = await _httpClient.GetAsync(url);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var result = await response.Content.ReadFromJsonAsync<BCResponse<PurchaseRequestDto>>();
-                
-                if (result?.Value == null)
-                {
-                    return new List<PurchaseRequestDto>();
-                }
-                
-                return result.Value;
-            }
-            
-            // Si BC répond avec une erreur, on utilise votre gestionnaire centralisé
-            await HandleErrorResponse(response);
-            return null;
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<PurchaseRequestDto>>();
+            return result?.Value ?? new List<PurchaseRequestDto>();
         }
 
-        public async Task<PurchaseRequestDto> GetRequestByIdAsync(Guid id, string projectNo)
+        public async Task<PurchaseRequestDto?> GetRequestByIdAsync(Guid id, string projectNo)
         {
-            // On ajoute $expand=purchaseRequestLines pour forcer BC à envoyer les lignes
             var url = $"purchaseRequests({id})?$expand=purchaseRequestLines";
-            
-            var response = await _httpClient.GetAsync(url);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var request = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-                
-                // Vérification de sécurité (déjà en place)
-                if (request != null && request.JobNo != projectNo)
-                {
-                    throw new UnauthorizedAccessException("Accès refusé à ce projet.");
-                }
-                
-                return request;
-            }
-            
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+            _logger.LogInformation("[PurchaseRequest] GET {Url}", url);
 
-            await HandleErrorResponse(response);
-            return null;
+            var response = await _httpClient.GetAsync(url);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var request = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+
+            if (request != null && !request.JobNo!.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException(
+                    "Accès refusé : cette demande n'appartient pas à votre projet.");
+
+            return request;
         }
 
         public async Task<PurchaseRequestDto> CreateHeaderAsync(PurchaseRequestDto header, string projectNo)
         {
-            // SÉCURITÉ : On force le numéro de projet extrait du JWT.
-            // Même si un utilisateur modifie le JSON côté client, le backend écrasera la valeur.
+            // Sécurité : le jobNo est toujours forcé depuis le JWT, jamais depuis le body client
             header.JobNo = projectNo;
 
-            // On prépare le contenu pour Business Central
-            var content = new StringContent(JsonSerializer.Serialize(header), Encoding.UTF8, "application/json");
-            
+            var json = JsonSerializer.Serialize(header, _writeOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("[PurchaseRequest] POST purchaseRequests — Body: {Json}", json);
+
             var response = await _httpClient.PostAsync("purchaseRequests", content);
 
-            if (response.IsSuccessStatusCode)
-            {
-                return await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-            }
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
 
-            await HandleErrorResponse(response);
-            return null;
+            return await response.Content.ReadFromJsonAsync<PurchaseRequestDto>()
+                ?? throw new Exception("Business Central n'a pas retourné la demande créée.");
         }
 
-public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, string projectNo)
-{
-    if (lines == null || !lines.Any()) return false;
-
-    // 1. On récupère le dernier numéro de ligne UNE SEULE FOIS au début
-    var firstDocNo = lines.First().DocumentNo;
-    int currentMaxLineNo = await GetLastLineNoAsync(firstDocNo);
-
-    foreach (var line in lines)
-    {
-        line.JobNo = projectNo;
-        
-        // 2. On incrémente localement pour chaque ligne du tableau
-        // Cela garantit que la 1ère ligne aura (Max + 10000) et la 2ème (Max + 20000)
-        currentMaxLineNo += 10000;
-        line.LineNo = currentMaxLineNo;
-
-        // LOG pour vérifier ce qui est envoyé (Regardez votre console de debug !)
-        _logger.LogInformation("Tentative création ligne {Doc} No {Line}", line.DocumentNo, line.LineNo);
-
-        var content = new StringContent(JsonSerializer.Serialize(line), Encoding.UTF8, "application/json");
-        var response = await _httpClient.PostAsync("purchaseRequestLines", content);
-
-        if (!response.IsSuccessStatusCode)
+        public async Task<bool> UpdateHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
         {
-            // Si ça échoue ici, on arrête tout pour éviter des données incohérentes
-            await HandleErrorResponse(response);
-            return false; 
-        }
-    }
-    return true;
-}
+            // 1. Vérification appartenance + récupération ETag
+            var (existing, etag) = await GetRequestAndEtagAsync(id, projectNo);
+            if (existing == null) return false;
 
+            // 2. Sécurité : on ne laisse pas modifier jobNo ou statut via ce endpoint
+            header.JobNo   = null;
+            header.Statut  = null;
+            header.No      = null;
+            header.Amount  = null;
 
+            var json = JsonSerializer.Serialize(header, _writeOptions);
+            _logger.LogInformation("[PurchaseRequest] PATCH purchaseRequests({Id}) — Body: {Json}", id, json);
 
-        public async Task<bool> PatchHeaderAsync(Guid id, PurchaseRequestDto header, string projectNo)
-{
-    var responseGet = await _httpClient.GetAsync($"purchaseRequests({id})");
-    if (!responseGet.IsSuccessStatusCode) return false;
-
-    var etag = responseGet.Headers.ETag?.ToString();
-    
-    // ⬇️ LOG : Voir exactement ce qui est envoyé à BC
-    var json = JsonSerializer.Serialize(header, new JsonSerializerOptions { 
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
-    });
-    _logger.LogInformation("PATCH purchaseRequests({Id}) — Body: {Json} — ETag: {ETag}", id, json, etag);
-
-    var content = new StringContent(json, Encoding.UTF8, "application/json");
-    var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
-    {
-        Content = content
-    };
-    request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
-
-    var responsePatch = await _httpClient.SendAsync(request);
-    
-    // ⬇️ LOG : Voir la réponse de BC
-    var responseBody = await responsePatch.Content.ReadAsStringAsync();
-    _logger.LogInformation("PATCH Response: {Status} — {Body}", (int)responsePatch.StatusCode, responseBody);
-
-    if (!responsePatch.IsSuccessStatusCode)
-    {
-        await HandleErrorResponse(responsePatch);
-    }
-
-    return responsePatch.IsSuccessStatusCode;
-}
-
-public async Task<bool> SubmitForApprovalAsync(Guid id, string projectNo)
-{
-    // 1. Vérification sécurité + récupération ETag
-    var getResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
-    if (!getResponse.IsSuccessStatusCode) return false;
-
-    var existing = await getResponse.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-    if (existing == null) return false;
-
-    if (!existing.JobNo.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
-        throw new UnauthorizedAccessException("Action refusée : cette demande n'appartient pas à votre projet.");
-
-    if (!existing.Statut.Equals("Open", StringComparison.OrdinalIgnoreCase))
-        throw new InvalidOperationException($"Statut actuel '{existing.Statut}' — seul 'Open' peut être soumis.");
-
-    var etag = getResponse.Headers.ETag?.ToString();
-
-    // 2. PATCH direct sur le statut — le flag "Bypass Status Check" 
-    //    est géré côté AL (Codeunit + OnModify de la table)
-    var json = """{"statut": "To Approve"}""";
-    var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-    var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequests({id})")
-    {
-        Content = content
-    };
-    request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
-
-    var response = await _httpClient.SendAsync(request);
-
-    if (!response.IsSuccessStatusCode)
-        await HandleErrorResponse(response);
-
-    return response.IsSuccessStatusCode;
-}
-
-        public async Task<bool> DeleteRequestAsync(Guid id, string projectNo)
-        {
-            // 1. VÉRIFICATION : On récupère la demande pour vérifier le JobNo
-            var getResponse = await _httpClient.GetAsync($"purchaseRequests({id})");
-            if (!getResponse.IsSuccessStatusCode) return false;
-
-            var request = await getResponse.Content.ReadFromJsonAsync<PurchaseRequestDto>();
-
-            // Sécurité : Vérifier si le projet correspond
-            if (request != null && request.JobNo != projectNo)
-            {
-                throw new UnauthorizedAccessException("Suppression refusée : Cette demande n'appartient pas à votre projet.");
-            }
-
-            // 2. SUPPRESSION : Si la vérification passe, on supprime
-            var response = await _httpClient.DeleteAsync($"purchaseRequests({id})");
+            var request = BuildPatchRequest($"purchaseRequests({id})", json, etag);
+            var response = await _httpClient.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
-            {
                 await HandleErrorResponse(response);
-            }
 
             return response.IsSuccessStatusCode;
         }
 
-
-        public async Task<bool> PatchLineAsync(Guid lineId, PurchaseRequestLineDto lineDto, string projectNo)
+        public async Task<bool> SubmitForApprovalAsync(Guid id, string projectNo)
         {
-            // 1. Récupération de la ligne pour vérifier l'appartenance au projet et obtenir l'ETag
-            var getResponse = await _httpClient.GetAsync($"purchaseRequestLines({lineId})");
-            if (!getResponse.IsSuccessStatusCode) return false;
+            // 1. Vérification appartenance + statut actuel
+            var (existing, etag) = await GetRequestAndEtagAsync(id, projectNo);
+            if (existing == null) return false;
 
-            var existingLine = await getResponse.Content.ReadFromJsonAsync<PurchaseRequestLineDto>();
-            var etag = getResponse.Headers.ETag?.ToString();
+            if (!existing.Statut!.Equals("Open", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Soumission impossible : statut actuel '{existing.Statut}', attendu 'Open'.");
 
-            // SÉCURITÉ : On vérifie que la ligne appartient bien au projet du chef de chantier connecté
-            if (existingLine == null || !existingLine.JobNo.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+            // 2. PATCH sur le statut uniquement
+            var json = """{"statut": "To Approve"}""";
+            _logger.LogInformation("[PurchaseRequest] PATCH submit purchaseRequests({Id})", id);
+
+            var request = BuildPatchRequest($"purchaseRequests({id})", json, etag);
+            var response = await _httpClient.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            return response.IsSuccessStatusCode;
+        }
+
+        public async Task<bool> DeleteRequestAsync(Guid id, string projectNo)
+        {
+            // Vérification appartenance avant suppression
+            var (existing, _) = await GetRequestAndEtagAsync(id, projectNo);
+            if (existing == null) return false;
+
+            _logger.LogInformation("[PurchaseRequest] DELETE purchaseRequests({Id})", id);
+
+            var response = await _httpClient.DeleteAsync($"purchaseRequests({id})");
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            return response.IsSuccessStatusCode;
+        }
+
+        // ─── LIGNES ───────────────────────────────────────────────────────────────
+
+        public async Task<bool> CreateLinesAsync(List<PurchaseRequestLineDto> lines, string projectNo)
+        {
+            if (lines == null || !lines.Any()) return false;
+
+            // Vérification : toutes les lignes doivent appartenir au même document
+            var documentNo = lines.First().DocumentNo;
+            if (lines.Any(l => l.DocumentNo != documentNo))
+                throw new ArgumentException("Toutes les lignes doivent appartenir au même document.");
+
+            // Vérification appartenance du document au projet
+            await VerifyDocumentOwnershipAsync(documentNo!, projectNo);
+
+            // Calcul du numéro de départ (dernier lineNo connu + incrément)
+            int currentLineNo = await GetLastLineNoAsync(documentNo!);
+
+            foreach (var line in lines)
             {
-                throw new UnauthorizedAccessException("Vous n'avez pas l'autorisation de modifier cette ligne.");
+                currentLineNo += 10000;
+                line.LineNo    = currentLineNo;
+                line.JobNo     = projectNo;
+
+                var json = JsonSerializer.Serialize(line, _writeOptions);
+                _logger.LogInformation("[PurchaseRequest] POST purchaseRequestLines — Doc: {Doc}, Ligne: {LineNo}", documentNo, currentLineNo);
+
+                var content  = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync("purchaseRequestLines", content);
+
+                if (!response.IsSuccessStatusCode)
+                    await HandleErrorResponse(response);
             }
 
-            // 2. Préparation du PATCH
-            // On force le JobNo au cas où il aurait été modifié dans le DTO
-            lineDto.JobNo = projectNo; 
-            
-            var json = JsonSerializer.Serialize(lineDto, new JsonSerializerOptions { 
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull 
-            });
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            return true;
+        }
 
-            var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"purchaseRequestLines({lineId})")
-            {
-                Content = content
-            };
+        public async Task<bool> UpdateLineAsync(Guid lineId, PurchaseRequestLineDto line, string projectNo)
+        {
+            // Vérification appartenance + ETag
+            var (existingLine, etag) = await GetLineAndEtagAsync(lineId, projectNo);
+            if (existingLine == null) return false;
 
-            // 3. Gestion de la concurrence (Indispensable pour BC)
-            request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
+            // Sécurité : champs non modifiables via ce endpoint
+            line.JobNo      = null;
+            line.DocumentNo = null;
+            line.LineNo     = null;
+            line.LineAmount = null;
 
-            var patchResponse = await _httpClient.SendAsync(request);
+            var json = JsonSerializer.Serialize(line, _writeOptions);
+            _logger.LogInformation("[PurchaseRequest] PATCH purchaseRequestLines({Id})", lineId);
 
-            if (!patchResponse.IsSuccessStatusCode)
-            {
-                await HandleErrorResponse(patchResponse);
-            }
+            var request  = BuildPatchRequest($"purchaseRequestLines({lineId})", json, etag);
+            var response = await _httpClient.SendAsync(request);
 
-            return patchResponse.IsSuccessStatusCode;
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            return response.IsSuccessStatusCode;
         }
 
         public async Task<bool> DeleteLineAsync(Guid lineId, string projectNo)
         {
-            // 1. VÉRIFICATION : On récupère la ligne pour vérifier son appartenance
-            var responseGet = await _httpClient.GetAsync($"purchaseRequestLines({lineId})");
-            
-            if (!responseGet.IsSuccessStatusCode) return false;
+            // Vérification appartenance avant suppression
+            var (existingLine, _) = await GetLineAndEtagAsync(lineId, projectNo);
+            if (existingLine == null) return false;
 
-            var line = await responseGet.Content.ReadFromJsonAsync<PurchaseRequestLineDto>();
+            _logger.LogInformation("[PurchaseRequest] DELETE purchaseRequestLines({Id})", lineId);
 
-            // SÉCURITÉ : On vérifie si le JobNo de la ligne correspond au projet du chef
-            if (line != null && line.JobNo != projectNo)
-            {
-                throw new UnauthorizedAccessException("Action refusée : Cette ligne appartient à un projet qui ne vous est pas assigné.");
-            }
+            var response = await _httpClient.DeleteAsync($"purchaseRequestLines({lineId})");
 
-            // 2. SUPPRESSION : Si c'est valide, on procède au DELETE
-            var responseDelete = await _httpClient.DeleteAsync($"purchaseRequestLines({lineId})");
-
-            if (!responseDelete.IsSuccessStatusCode)
-            {
-                await HandleErrorResponse(responseDelete);
-            }
-
-            return responseDelete.IsSuccessStatusCode;
-        }
-
-        // --- OUTILS PRIVÉS ---
-
-        private async Task<bool> SendPatchRequest(string url, object body)
-        {
-            var json = JsonSerializer.Serialize(body);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var request = new HttpRequestMessage(HttpMethod.Patch, url) { Content = content };
-            
-            // Obligatoire pour Business Central (OData) lors d'un PATCH
-            request.Headers.Add("If-Match", "*"); 
-
-            var response = await _httpClient.SendAsync(request);
-            
-            if (!response.IsSuccessStatusCode) 
+            if (!response.IsSuccessStatusCode)
                 await HandleErrorResponse(response);
-                
+
             return response.IsSuccessStatusCode;
         }
 
-        // ce que fait exactement cette méthode : elle lit le contenu de la réponse d'erreur de BC, 
-        // essaie de le désérialiser en un objet BCResponseError pour extraire le message d'erreur spécifique de BC, et si la désérialisation échoue (par exemple si le format de l'erreur n'est pas celui attendu), elle lance une exception générique avec le code d'état HTTP et le contenu brut de l'erreur
-        private new async Task HandleErrorResponse(HttpResponseMessage response)
+        // ─── HELPERS PRIVÉS ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Récupère un en-tête de demande d'achat et son ETag.
+        /// Lève UnauthorizedAccessException si le projet ne correspond pas.
+        /// Retourne (null, null) si la ressource est introuvable (404).
+        /// </summary>
+        private async Task<(PurchaseRequestDto? dto, string? etag)> GetRequestAndEtagAsync(Guid id, string projectNo)
         {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            try {
-                var bcError = JsonSerializer.Deserialize<BCResponseError>(errorContent);
-                throw new Exception(bcError?.Error?.Message ?? errorContent);
-            } catch (JsonException) {
-                throw new Exception($"Réponse de Business Central illisible (Format JSON invalide). Code HTTP {(int)response.StatusCode}. Contenu brut : {errorContent}");
-            }
-    
+            var response = await _httpClient.GetAsync($"purchaseRequests({id})");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return (null, null);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var dto  = await response.Content.ReadFromJsonAsync<PurchaseRequestDto>();
+            var etag = response.Headers.ETag?.ToString();
+
+            if (dto != null && !dto.JobNo!.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException(
+                    "Accès refusé : cette demande n'appartient pas à votre projet.");
+
+            return (dto, etag);
         }
 
+        /// <summary>
+        /// Récupère une ligne et son ETag.
+        /// Lève UnauthorizedAccessException si le projet ne correspond pas.
+        /// Retourne (null, null) si la ressource est introuvable (404).
+        /// </summary>
+        private async Task<(PurchaseRequestLineDto? dto, string? etag)> GetLineAndEtagAsync(Guid lineId, string projectNo)
+        {
+            var response = await _httpClient.GetAsync($"purchaseRequestLines({lineId})");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return (null, null);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var dto  = await response.Content.ReadFromJsonAsync<PurchaseRequestLineDto>();
+            var etag = response.Headers.ETag?.ToString();
+
+            if (dto != null && !dto.JobNo!.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException(
+                    "Accès refusé : cette ligne n'appartient pas à votre projet.");
+
+            return (dto, etag);
+        }
+
+        /// <summary>
+        /// Vérifie qu'un document (par son numéro) appartient au projet du chef connecté.
+        /// Utilisé lors de la création de lignes pour sécuriser le document cible.
+        /// </summary>
+        private async Task VerifyDocumentOwnershipAsync(string documentNo, string projectNo)
+        {
+            var url = $"purchaseRequests?$filter=no eq '{ODataEncode(documentNo)}'";
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<PurchaseRequestDto>>();
+            var header = result?.Value?.FirstOrDefault();
+
+            if (header == null)
+                throw new KeyNotFoundException($"Document '{documentNo}' introuvable.");
+
+            if (!header.JobNo!.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException(
+                    "Accès refusé : ce document n'appartient pas à votre projet.");
+        }
+
+        /// <summary>
+        /// Retourne le dernier numéro de ligne du document, ou 0 si aucune ligne n'existe.
+        /// Utilisé pour calculer le prochain lineNo lors de la création.
+        /// </summary>
         private async Task<int> GetLastLineNoAsync(string documentNo)
         {
-            // On appelle BC pour avoir la dernière ligne de ce document précis
-            // On trie par LineNo descendant et on en prend 1 ($top=1)
-            var response = await _httpClient.GetAsync($"purchaseRequestLines?$filter=documentNo eq '{documentNo}'&$orderby=lineNo desc&$top=1");
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var content = await response.Content.ReadAsStringAsync();
-                using var doc = JsonDocument.Parse(content);
-                var root = doc.RootElement.GetProperty("value");
+            var url = $"purchaseRequestLines?$filter=documentNo eq '{ODataEncode(documentNo)}'&$orderby=lineNo desc&$top=1";
+            var response = await _httpClient.GetAsync(url);
 
-                if (root.GetArrayLength() > 0)
-                {
-                    return root[0].GetProperty("lineNo").GetInt32();
-                }
-            }
-            return 0; // Si aucune ligne n'existe, on commence à 0
+            if (!response.IsSuccessStatusCode)
+                return 0;
+
+            var content = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(content);
+            var values = doc.RootElement.GetProperty("value");
+
+            return values.GetArrayLength() > 0
+                ? values[0].GetProperty("lineNo").GetInt32()
+                : 0;
         }
 
-
+        /// <summary>
+        /// Construit une requête PATCH avec le header If-Match requis par BC.
+        /// </summary>
+        private static HttpRequestMessage BuildPatchRequest(string url, string json, string? etag)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Patch, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            request.Headers.TryAddWithoutValidation("If-Match", etag ?? "*");
+            return request;
+        }
     }
-
 }

@@ -8,7 +8,8 @@ page 50145 "ItemLedgerEntryAPI"
     EntityName = 'itemLedgerEntry';
     EntitySetName = 'itemLedgerEntries';
     SourceTable = "Item Ledger Entry";
-    DelayedInsert = true;
+    // Page en lecture seule totale — les écritures comptables ne sont jamais modifiées depuis l'API
+    DelayedInsert = false;
     InsertAllowed = false;
     ModifyAllowed = false;
     DeleteAllowed = false;
@@ -19,15 +20,53 @@ page 50145 "ItemLedgerEntryAPI"
         {
             repeater(GroupName)
             {
-                field(entryNo; Rec."Entry No.") { }
-                field(itemNo; Rec."Item No.") { }
-                // Utilisation du FlowField de votre extension 
-                field(itemDescription; Rec."Designation Article") { } 
-                field(locationCode; Rec."Location Code") { }
-                field(quantity; Rec.Quantity) { }
-                // Champ pivot pour le filtrage par projet 
-                field(jobNo; Rec."Job No.") { } 
-                field(postingDate; Rec."Posting Date") { }
+                // --- Identifiants ---
+                field(entryNo; Rec."Entry No.")
+                {
+                    Caption = 'N° Écriture';
+                    Editable = false;
+                }
+
+                // --- Article ---
+                field(itemNo; Rec."Item No.")
+                {
+                    Caption = 'N° Article';
+                    Editable = false;
+                }
+                // FlowField de l'extension Soroubat — description de l'article
+                field(itemDescription; Rec."Designation Article")
+                {
+                    Caption = 'Désignation article';
+                    Editable = false;
+                }
+
+                // --- Localisation ---
+                field(locationCode; Rec."Location Code")
+                {
+                    Caption = 'Code magasin';
+                    Editable = false;
+                }
+
+                // --- Quantité ---
+                field(quantity; Rec.Quantity)
+                {
+                    Caption = 'Quantité';
+                    Editable = false;
+                }
+
+                // --- Projet & Date ---
+                // jobNo est le pivot de filtrage côté backend (.NET)
+                field(jobNo; Rec."Job No.")
+                {
+                    Caption = 'N° Projet';
+                    Editable = false;
+                }
+                // postingDate est utilisé pour calculer LastPostingDate (dernier mouvement) côté backend
+                field(postingDate; Rec."Posting Date")
+                {
+                    Caption = 'Date comptabilisation';
+                    Editable = false;
+                }
             }
         }
     }

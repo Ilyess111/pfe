@@ -10,58 +10,76 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var bcConfig = builder.Configuration.GetSection("BusinessCentral");
-string rawUrl = bcConfig.GetValue<string>("BaseUrl") ?? "";
+// ─── CONFIGURATION BUSINESS CENTRAL ─────────────────────────────────────────
 
-string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
+var bcConfig = builder.Configuration.GetSection("BusinessCentral");
+string rawUrl    = bcConfig.GetValue<string>("BaseUrl")     ?? string.Empty;
 string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV";
 
-// Pour les Services de gestion
+string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
+
+// API Custom (siteManagement) — utilisée par tous les services métier
 string apiUri = $"{baseUrl}/api/soroubat/siteManagement/v1.0/companies(name='{Uri.EscapeDataString(companyName)}')/";
 
-// Pour les Lookups (Services Web OData)
+// Services Web OData — utilisés uniquement par LookupService
 string odataUri = $"{baseUrl}/ODataV4/Company('{Uri.EscapeDataString(companyName)}')/";
 
-var jwtKey = builder.Configuration["Jwt:Key"];
+// ─── AUTHENTIFICATION JWT ────────────────────────────────────────────────────
+
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("La clé JWT 'Jwt:Key' est manquante dans la configuration.");
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidIssuer              = builder.Configuration["Jwt:Issuer"],
+            ValidAudience            = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
-builder.Services.AddAuthorization();
-builder.Services.AddDbContext<AuthDbContext>(opt => opt.UseSqlite("Data Source=auth.db"));
 
-// --- 3. SERVICES ---
-builder.Services.AddControllers().AddJsonOptions(options => {
+builder.Services.AddAuthorization();
+
+// ─── BASE DE DONNÉES LOCALE ──────────────────────────────────────────────────
+
+builder.Services.AddDbContext<AuthDbContext>(opt =>
+    opt.UseSqlite("Data Source=auth.db")); //data source indique le chemin du fichier de base de données SQLite locale (auth.db à la racine du projet)
+// ca veut dire les paramétres sont opt et à l'appel fait : opt.useSqlite("Data Source=auth.db") . opt sera remplacé par DbContextOptions<AuthDbContext> options 
+// ─── CONTRÔLEURS & SÉRIALISATION ─────────────────────────────────────────────
+
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
 });
+
+// ─── SWAGGER ─────────────────────────────────────────────────────────────────
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Soroubat API", Version = "v1" });
-
-    // Configuration de la définition de sécurité pour JWT
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
     {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Entrez 'Bearer' suivi d'un espace et de votre jeton JWT.\n\nExemple: \"Bearer eyJhbGci...\""
+        Title   = "Soroubat API",
+        Version = "v1",
+        Description = "API de gestion et pilotage des chantiers — intégrée à Business Central."
     });
 
-    // Activation de la sécurité globalement dans Swagger
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name        = "Authorization",
+        Type        = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        Scheme      = "Bearer",
+        BearerFormat = "JWT",
+        In          = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Entrez 'Bearer' suivi d'un espace et de votre jeton JWT.\n\nExemple : \"Bearer eyJhbGci...\""
+    });
+
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
     {
         {
@@ -70,61 +88,78 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new Microsoft.OpenApi.Models.OpenApiReference
                 {
                     Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
+                    Id   = "Bearer"
                 }
             },
-            new string[] {}
+            Array.Empty<string>()
         }
     });
 });
 
-// configuration injection dépendances 
-void ConfigureBCClient(HttpClient client) {
+// ─── CONFIGURATION DES CLIENTS HTTP ──────────────────────────────────────────
+
+// Client BC (API Custom) — utilisé par tous les services métier
+void ConfigureBCClient(HttpClient client)
+{
     client.BaseAddress = new Uri(apiUri);
-    client.DefaultRequestHeaders.Accept.Clear(); // On vide les headers par sécurité
+    client.DefaultRequestHeaders.Accept.Clear();
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 }
 
-void ConfigureODataClient(HttpClient client) {
+// Client OData — utilisé uniquement par LookupService
+void ConfigureODataClient(HttpClient client)
+{
     client.BaseAddress = new Uri(odataUri);
     client.DefaultRequestHeaders.Accept.Clear();
-    // OData demande spécifiquement du JSON avec métadonnées minimales pour être efficace
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 }
 
-builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+// Gestionnaire HTTP commun : authentification Windows intégrée (NTLM/Kerberos → BC)
+static HttpClientHandler CreateBCHandler() =>
+    new HttpClientHandler { UseDefaultCredentials = true };
 
-builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+// ─── INJECTION DES SERVICES ───────────────────────────────────────────────────
 
-builder.Services.AddHttpClient<ITransferService, TransferService>(ConfigureBCClient).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+builder.Services.AddHttpClient<ISiteManagementService, SiteManagementService>(ConfigureBCClient)
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
-// on a utilisé odata pour ce service
-builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+builder.Services.AddHttpClient<IPurchaseRequestService, PurchaseRequestService>(ConfigureBCClient)
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
+
+builder.Services.AddHttpClient<ITransferService, TransferService>(ConfigureBCClient)
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
 builder.Services.AddHttpClient<IStockService, StockService>(ConfigureBCClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
 builder.Services.AddHttpClient<IChefChantierService, ChefChantierService>(ConfigureBCClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
 builder.Services.AddHttpClient<IVehiculeService, VehiculeService>(ConfigureBCClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
-
-builder.Services.AddHttpClient<IVehiculeService, VehiculeService>(ConfigureBCClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
 builder.Services.AddHttpClient<IGasoilService, GasoilService>(ConfigureBCClient)
-.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
+// Lookup : OData uniquement
+builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
+    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
+
+// Services sans HttpClient propre (Scoped)
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 
-builder.Services.AddCors(opt => opt.AddPolicy("AllowAngular", p => 
-    p.WithOrigins("http://localhost:4200").AllowAnyMethod().AllowAnyHeader().AllowCredentials()));
+// ─── CORS ────────────────────────────────────────────────────────────────────
+
+builder.Services.AddCors(opt => opt.AddPolicy("AllowAngular", p =>
+    p.WithOrigins("http://localhost:4200")
+     .AllowAnyMethod()
+     .AllowAnyHeader()
+     .AllowCredentials()));
+
+// ─── PIPELINE ────────────────────────────────────────────────────────────────
 
 var app = builder.Build();
-
 
 if (app.Environment.IsDevelopment())
 {
@@ -132,15 +167,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-
 app.UseCors("AllowAngular");
-app.UseAuthentication(); 
-app.UseAuthorization();  
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
 
-// Afficher l'URL de démarrage
-Console.WriteLine("🚀 Backend démarré sur http://localhost:5227");
-Console.WriteLine("📚 Swagger disponible sur http://localhost:5227/swagger");
-
+Console.WriteLine("Soroubat API démarrée sur http://localhost:5227");
+Console.WriteLine("Swagger disponible sur http://localhost:5227/swagger");
 
 app.Run();

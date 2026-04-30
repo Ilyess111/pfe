@@ -1,26 +1,29 @@
-using System;
-using Newtonsoft.Json; 
+using System.Text.Json.Serialization;
 
 namespace Soroubat.Api.Models
 {
+    /// <summary>
+    /// Représente un Chef Chantier retourné par l'API ChefChantierAPI de Business Central.
+    /// Utilisé uniquement lors de l'authentification pour récupérer le numéro de projet associé.
+    /// </summary>
     public class ChefChantierDto
     {
-        [JsonProperty("id")] 
+        [JsonPropertyName("id")]
         public Guid Id { get; set; }
 
-        [JsonProperty("nomEtPrenom")]
-        public string NomEtPrenom { get; set; }
+        [JsonPropertyName("nomEtPrenom")]
+        public string NomEtPrenom { get; set; } = string.Empty;
 
-        [JsonProperty("email")]
-        public string Email { get; set; }
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
 
-        [JsonProperty("numProjet")]
-        public string NumProjet { get; set; }
+        [JsonPropertyName("numProjet")]
+        public string NumProjet { get; set; } = string.Empty;
 
-        [JsonProperty("actif")]
+        [JsonPropertyName("actif")]
         public bool Actif { get; set; }
 
-        [JsonProperty("idApprobateur")]
-        public string IdApprobateur { get; set; }
+        [JsonPropertyName("idApprobateur")]
+        public string IdApprobateur { get; set; } = string.Empty;
     }
 }

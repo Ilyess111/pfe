@@ -1,70 +1,108 @@
-using Soroubat.Api.Interfaces;
-using Soroubat.Api.Models;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
+using Soroubat.Api.Interfaces;
+using Soroubat.Api.Models;
 
-// le namespace sert à organiser le code et à éviter les conflits de noms entre différentes parties de l'application. Ici, Soroubat.Api.Services indique que ce fichier fait partie des services de l'API Soroubat.
 namespace Soroubat.Api.Services
 {
-public class SiteManagementService : BaseService, ISiteManagementService 
-{
-    private readonly HttpClient _httpClient;
-
-    public SiteManagementService(HttpClient httpClient)
+    /// <summary>
+    /// Service de gestion de chantier.
+    /// Toutes les opérations sont filtrées et vérifiées par rapport au projectNo du JWT.
+    /// </summary>
+    public class SiteManagementService : BaseService, ISiteManagementService
     {
-        _httpClient = httpClient;
-    }
+        private readonly HttpClient _httpClient;
+        private readonly ILogger<SiteManagementService> _logger;
 
-    // Récupère uniquement le projet spécifique du chef
-    public async Task<JobDto> GetAssignedJobAsync(string projectNo)
-    {
-        // On filtre directement par le No de projet issu du token
-        var response = await _httpClient.GetAsync($"jobs?$filter=no eq '{projectNo}'"); 
-        
-        if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
-
-        var data = await response.Content.ReadFromJsonAsync<BCResponse<JobDto>>();
-        return data?.Value?.FirstOrDefault() ?? throw new Exception("Projet non trouvé ou non assigné.");
-    }
-
-        public async Task<List<JobTaskDto>> GetMyTasksAsync(string projectNo)
+        public SiteManagementService(HttpClient httpClient, ILogger<SiteManagementService> logger)
         {
-            // On filtre les tâches directement par le numéro de projet (JobNo)
-            // Cela correspond au champ 'jobNo' dans votre API jobTasks
-            var response = await _httpClient.GetAsync($"jobTasks?$filter=jobNo eq '{projectNo}'"); 
-            
-            if (!response.IsSuccessStatusCode) await HandleErrorResponse(response);
+            _httpClient = httpClient;
+            _logger = logger;
+        }
+
+        // ─── PROJET ──────────────────────────────────────────────────────────────
+
+        public async Task<JobDto> GetAssignedJobAsync(string projectNo)
+        {
+            var url = $"jobs?$filter=no eq '{ODataEncode(projectNo)}'";
+            _logger.LogInformation("[SiteManagement] GET {Url}", url);
+
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
+
+            var data = await response.Content.ReadFromJsonAsync<BCResponse<JobDto>>();
+            return data?.Value?.FirstOrDefault()
+                ?? throw new KeyNotFoundException($"Projet '{projectNo}' introuvable dans Business Central.");
+        }
+
+        // ─── TÂCHES ───────────────────────────────────────────────────────────────
+
+        public async Task<List<JobTaskDto>> GetTasksByProjectAsync(string projectNo)
+        {
+            var url = $"jobTasks?$filter=jobNo eq '{ODataEncode(projectNo)}'";
+            _logger.LogInformation("[SiteManagement] GET {Url}", url);
+
+            var response = await _httpClient.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+                await HandleErrorResponse(response);
 
             var data = await response.Content.ReadFromJsonAsync<BCResponse<JobTaskDto>>();
             return data?.Value ?? new List<JobTaskDto>();
         }
-        public async Task<bool> UpdateTaskProgressAsync(Guid taskId, decimal progress, string authorizedProjectNo)
+
+        public async Task<bool> UpdateTaskProgressAsync(Guid taskId, decimal progressPct, string projectNo)
         {
-            // 1. VERIFICATION : On vérifie que la tâche appartient bien au projet du chef
-            var taskResponse = await _httpClient.GetAsync($"jobTasks({taskId})");
-            if (!taskResponse.IsSuccessStatusCode) return false;
+            // 1. Vérification : la tâche doit appartenir au projet du chef connecté
+            _logger.LogInformation("[SiteManagement] Vérification appartenance tâche {TaskId} → projet {ProjectNo}", taskId, projectNo);
 
-            var task = await taskResponse.Content.ReadFromJsonAsync<JobTaskDto>();
-            
-            // Si le JobNo de la tâche ne correspond pas au projet du token JWT -> REFUS
-            if (task == null || task.JobNo != authorizedProjectNo)
-            {
-                throw new UnauthorizedAccessException("Vous n'avez pas le droit de modifier une tâche d'un autre chantier.");
-            }
+            var getResponse = await _httpClient.GetAsync($"jobTasks({taskId})");
+            if (!getResponse.IsSuccessStatusCode)
+                return false;
 
-            // 2. EXECUTION : Si c'est validé, on fait la mise à jour
-            var patchData = new { progressPct = progress };
-            var json = JsonSerializer.Serialize(patchData);
+            var task = await getResponse.Content.ReadFromJsonAsync<JobTaskDto>();
+
+            if (task == null || !task.JobNo.Equals(projectNo, StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException(
+                    "Modification refusée : cette tâche n'appartient pas à votre projet.");
+
+            // 2. Validation métier : la progression doit être entre 0 et 100
+            if (progressPct < 0 || progressPct > 100)
+                throw new ArgumentOutOfRangeException(nameof(progressPct),
+                    "Le pourcentage d'avancement doit être compris entre 0 et 100.");
+
+            // 3. Mise à jour : PATCH uniquement le champ d'avancement
+            var patchBody = new { progressPct };
+            var json = JsonSerializer.Serialize(patchBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"jobTasks({taskId})") { Content = content };
-            request.Headers.Add("If-Match", "*"); 
+            var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"jobTasks({taskId})")
+            {
+                Content = content
+            };
+            request.Headers.TryAddWithoutValidation("If-Match", "*");
 
-            var response = await _httpClient.SendAsync(request);
-            return response.IsSuccessStatusCode;
+            _logger.LogInformation("[SiteManagement] PATCH jobTasks({TaskId}) — progressPct: {Progress}", taskId, progressPct);
+
+            var patchResponse = await _httpClient.SendAsync(request);
+
+            if (!patchResponse.IsSuccessStatusCode)
+                await HandleErrorResponse(patchResponse);
+
+            return patchResponse.IsSuccessStatusCode;
         }
 
-    
+        // ─── HELPERS PRIVÉS ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Échappe les apostrophes dans les valeurs utilisées dans les filtres OData
+        /// pour prévenir les injections de filtre.
+        /// </summary>
+        private static string ODataEncode(string value) =>
+            value.Replace("'", "''");
     }
 }

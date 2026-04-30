@@ -9,7 +9,6 @@ namespace Soroubat.Api.Controllers
     [Route("api/[controller]")]
     public class LookupController : ControllerBase
     {
-        // On injecte l'INTERFACE du service, pas le HttpClient
         private readonly ILookupService _lookupService;
         private readonly IChefChantierService _chefChantierService;
 

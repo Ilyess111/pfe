@@ -10,6 +10,9 @@ page 50123 "JobAPI"
     SourceTable = Job;
     DelayedInsert = true;
     ODataKeyFields = SystemId;
+    InsertAllowed = false;
+    ModifyAllowed = false;
+    DeleteAllowed = false;
 
     layout
     {
@@ -17,28 +20,64 @@ page 50123 "JobAPI"
         {
             repeater(GroupName)
             {
-                field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
-                field(no; Rec."No.") { Caption = 'N° Projet'; }
-                field(description; Rec.Description) { Caption = 'description'; }
-                field(status; Rec.Status) { Caption = 'Statut'; }
-                field(startingDate; Rec."Starting Date") 
-                { 
-                    Caption = 'Date de début'; 
+                // --- Identifiants ---
+                field(id; Rec.SystemId)
+                {
+                    Caption = 'Id';
+                    Editable = false;
                 }
-                field(endingDate; Rec."Ending Date") // date fin prévue
-                { 
-                    Caption = 'Date de fin'; 
+                field(no; Rec."No.")
+                {
+                    Caption = 'N° Projet';
+                    Editable = false;
                 }
-                
-                // Pour savoir qui gère le chantier sur le Web
-                field(personResponsible; Rec."Person Responsible") { caption = 'Person Responsible'; } // indique la personne opérationnelle responsable du chantier
-                field(projectManager; Rec."Project Manager") { caption = 'Project Manager'; } // indique la personne administrative responsable du chantier
-                
-                // Utile pour la logistique et les demandes d'achat futures
-                field(affectationMagasin; Rec."Affectation Magasin") {  caption = 'Affectation Magasin'; } // indique le magasin d'approvisionnement principal pour ce chantier, ce qui peut être utilisé pour filtrer les demandes d'achat et les approvisionnements liés à ce projet
+
+                // --- Informations générales ---
+                field(description; Rec.Description)
+                {
+                    Caption = 'Description';
+                    Editable = false;
+                }
+                field(status; Rec.Status)
+                {
+                    Caption = 'Statut';
+                    Editable = false;
+                }
+
+                // --- Planification ---
+                field(startingDate; Rec."Starting Date")
+                {
+                    Caption = 'Date de début';
+                    Editable = false;
+                }
+                field(endingDate; Rec."Ending Date")
+                {
+                    Caption = 'Date de fin prévue';
+                    Editable = false;
+                }
+
+                // --- Responsables ---
+                // Personne opérationnelle responsable du chantier sur le terrain
+                field(personResponsible; Rec."Person Responsible")
+                {
+                    Caption = 'Responsable opérationnel';
+                    Editable = false;
+                }
+                // Personne administrative responsable du chantier
+                field(projectManager; Rec."Project Manager")
+                {
+                    Caption = 'Chef de projet';
+                    Editable = false;
+                }
+
+                // --- Logistique ---
+                // Magasin d'approvisionnement principal associé au chantier
+                field(affectationMagasin; Rec."Affectation Magasin")
+                {
+                    Caption = 'Magasin affecté';
+                    Editable = false;
+                }
             }
         }
     }
-
-   
 }

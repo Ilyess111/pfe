@@ -1,75 +1,114 @@
-// utilise l'objet de type page pour exposer des données vers l'extérieur. 
-//"JobTaskAPi"  est utilisé si vous voulez faire référence à cette page dans d'autres parties de votre code AL.
 page 50120 "JobTaskAPI"
 {
     PageType = API;
     Caption = 'jobTaskApi';
-    //APIPublisher, APIGroup, APIVersion : Ces trois éléments forment l'URL de votre service.
     APIPublisher = 'soroubat';
     APIGroup = 'siteManagement';
     APIVersion = 'v1.0';
-    EntityName = 'jobTask'; // type de l'objet 
-    EntitySetName = 'jobTasks'; //C'est le nom qui apparaît réellement dans l'URL
-    SourceTable = "Job Task"; //nom de la table telle qu'elle existe physiquement dans la base de données SQL 
-    DelayedInsert = true; // BC attend d'avoir reçu tous les champs envoyés par l'API avant de tenter d'insérer et de valider l'enregistrement dans la table SourceTable
+    EntityName = 'jobTask';
+    EntitySetName = 'jobTasks';
+    SourceTable = "Job Task";
+    DelayedInsert = true;
     ODataKeyFields = SystemId;
-    // Configuration des permissions d'écriture
-    InsertAllowed = false; // On ne crée pas de nouvelles tâches depuis le Web, par défaut à false
-    ModifyAllowed = true;  // On autorise la modification de l'avancement , par défaut à false
-    DeleteAllowed = false; // Sécurité : on ne supprime rien , par défaut à false
+    InsertAllowed = false;
+    ModifyAllowed = true;
+    DeleteAllowed = false;
 
-    layout //séparation de la partie logique (définition de l'api / triggers ) et de la partie présentation (layout)
+    layout
     {
-        area(Content) // Business Central divise les pages en zones spécifiques. C'est là que vous placez les champs que vous souhaitez exposer via l'API.
-        // on utilise content car c'est la zone principale d'une page de type API. Les autres types de pages (Card, List, etc.) ont d'autres zones comme "Factbox", "ActionPane", etc.
+        area(Content)
         {
-            repeater(GroupName) //il "répète" les lignes. Si votre table contient 50 enregistrements, le repeater affichera 50 lignes sous forme de tableau (grille) json pour les pages de type API. 
-            // group name est le nom technique que vous donnez à ce groupe de champs.
+            repeater(GroupName)
             {
-                //les 3 premiers champs sont issus de la table "Job Task" (SourceTable) et les suivants proviennent de la TableExtension 50877 créée pour SOROUBAT.
-                //Le premier paramètre (ex: jobNo) est le nom que l'application Angular verra. Le second (Rec."Job No.") est le nom technique dans BC.
-                field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; } // le caption est utilisé pour générer la documentation de l'API, il n'apparaît pas dans l'URL ni dans les données échangées.  
-                field(jobNo; Rec."Job No.") { Caption = 'Job No.'; Editable = false; } // editable par défaut à false
-                field(taskNo; Rec."Job Task No.") { Caption = 'Task No.'; Editable = false; }
-                field(description; Rec.Description) { Caption = 'Description'; Editable = false; }
+                // --- Identifiants ---
+                field(id; Rec.SystemId)
+                {
+                    Caption = 'Id';
+                    Editable = false;
+                }
+                field(jobNo; Rec."Job No.")
+                {
+                    Caption = 'N° Projet';
+                    Editable = false;
+                }
+                field(taskNo; Rec."Job Task No.")
+                {
+                    Caption = 'N° Tâche';
+                    Editable = false;
+                }
 
-                // --- SAISIE AVANCEMENT (Modifiables par le chef de chantier) ---
-                // Cruciaux pour le suivi temporel sur le site Web
-                field(dateDebut; Rec."Date Debut") { Caption = 'Date Debut'; }
-                field(dateFin; Rec."Date Fin") { Caption = 'Date Fin'; }
-                
-                // ce champ permet au chef de chantier de saisir un pourcentage d'avancement global de la tâche, qui peut être différent du progress calculé automatiquement en fonction de la quantité réalisée (taskProgressPct)
-                field(progressPct; Rec."Progress %") { Caption = 'Progress %'; }
-                // un champ d'avancement théorique calculé en fonction de la quantité réalisée vs la quantité initiale, pour comparer avec le progressPct saisi manuellement
-                field(taskProgressPct; Rec."Task Progress %") { Caption = 'Task Progress %'; Editable = false;} 
-                
-                // --- DONNÉES CALCULÉES & RÉALISÉ (Toujours en lecture seule) ---
-                // quantityShipped représente ce qui a été réellement consommé/réalisé (FlowField)
-                field(quantityShipped; Rec."Quantity Shipped") { Caption = 'Quantity Realized'; Editable = false; } 
-                
-                // --- DONNÉES DE VENTE (Lecture seule pour consultation uniquement) ---
-                // Utile pour comparer le réalisé par rapport à l'objectif de vente
-                // initial quantity est utile pour comparer la quantité initialement prévue (objectif de vente) avec la quantité réellement réalisée (quantityShipped)
-                field(initialQuantity; Rec."Initial Quantity") { Caption = 'Initial Quantity'; Editable = false; }
-                // initial uom est utilisée pour afficher l'unité de mesure de la quantité initiale, afin d'avoir une information complète sur les objectifs de vente
-                field(initialUoM; Rec."Initial Unit Of Measure") { Caption = 'Initial UoM'; Editable = false; }
-                // initial amount est utilisée pour préciser le montant total de la tâche tel que prévu initialement
-                field(initialAmount; Rec."Initial Amount") { Caption = 'Initial Amount'; Editable = false; }
-                // le champ is blocked est utilisé pour indiquer si la tâche est bloquée pour des raisons administratives, de sécurité ou autres
-                field(isBlocked; Rec.Blocked) { Caption = 'Is Blocked'; Editable = false; }
+                // --- Informations générales ---
+                field(description; Rec.Description)
+                {
+                    Caption = 'Description';
+                    Editable = false;
+                }
+                field(isBlocked; Rec.Blocked)
+                {
+                    Caption = 'Bloquée';
+                    Editable = false;
+                }
+
+                // --- Planification (lecture seule — définie dans BC par le chef de projet) ---
+                field(dateDebut; Rec."Date Debut")
+                {
+                    Caption = 'Date de début';
+                    Editable = false;
+                }
+                field(dateFin; Rec."Date Fin")
+                {
+                    Caption = 'Date de fin';
+                    Editable = false;
+                }
+
+                // --- Avancement ---
+                // Seul champ modifiable par le chef de chantier depuis l'API
+                field(progressPct; Rec."Progress %")
+                {
+                    Caption = 'Avancement saisi (%)';
+                }
+                // Calculé automatiquement depuis les quantités réalisées — lecture seule
+                field(taskProgressPct; Rec."Task Progress %")
+                {
+                    Caption = 'Avancement calculé (%)';
+                    Editable = false;
+                }
+
+                // --- Réalisé (FlowFields calculés dans OnAfterGetRecord) ---
+                field(quantityShipped; Rec."Quantity Shipped")
+                {
+                    Caption = 'Quantité réalisée';
+                    Editable = false;
+                }
                 field(usageTotalCost; Rec."Usage (Total Cost)")
                 {
-                    Caption = 'Usage Total Cost';
+                    Caption = 'Coût réel total';
+                    Editable = false;
+                }
+
+                // --- Budget initial (lecture seule) ---
+                field(initialQuantity; Rec."Initial Quantity")
+                {
+                    Caption = 'Quantité initiale';
+                    Editable = false;
+                }
+                field(initialUoM; Rec."Initial Unit Of Measure")
+                {
+                    Caption = 'Unité de mesure';
+                    Editable = false;
+                }
+                field(initialAmount; Rec."Initial Amount")
+                {
+                    Caption = 'Montant initial';
                     Editable = false;
                 }
             }
         }
     }
 
-    trigger OnAfterGetRecord() //s'exécute à chaque fois que l'API récupère une ligne de la table.
+    trigger OnAfterGetRecord()
     begin
-        // Calcul des FlowFields pour Angular (en temps réel)
-        // On exécute les formules CalcFormula définies dans la tableext 50877 pour obtenir les totaux
+        // Calcul des FlowFields à chaque lecture pour obtenir les valeurs à jour
         Rec.CalcFields("Quantity Shipped");
         Rec.CalcFields("Usage (Total Cost)");
     end;

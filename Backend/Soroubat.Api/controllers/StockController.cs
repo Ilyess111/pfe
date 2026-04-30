@@ -1,11 +1,15 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Interfaces;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
+using Soroubat.Api.Models;
 
 namespace Soroubat.Api.Controllers
 {
+    /// <summary>
+    /// Consultation du stock chantier.
+    /// Le stock est calculé en agrégeant les écritures comptables articles filtrées
+    /// par projet. Ce contrôleur est en lecture seule.
+    /// </summary>
     [Authorize]
     [ApiController]
     [Route("api/[controller]")]
@@ -13,30 +17,34 @@ namespace Soroubat.Api.Controllers
     {
         private readonly IStockService _stockService;
 
-        // Utilisation de la claim avec "p" minuscule comme convenu
-        private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? "";
+        private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? string.Empty;
 
         public StockController(IStockService stockService)
         {
             _stockService = stockService;
         }
 
-        [HttpGet("my-stock")]
-        public async Task<IActionResult> GetMyStock()
+        /// <summary>
+        /// Retourne le stock agrégé du chantier du chef de chantier connecté.
+        /// Retourne une liste vide si aucun article n'est en stock.
+        /// </summary>
+        [HttpGet]
+        [ProducesResponseType(typeof(List<StockChantierDto>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<List<StockChantierDto>>> GetMyStock()
         {
-            var projectNo = UserProjectNo;
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-            if (string.IsNullOrEmpty(projectNo))
+            try
             {
-                return Unauthorized(new { message = "Aucun projet associé à ce compte." });
+                var stock = await _stockService.GetStockByProjectAsync(UserProjectNo);
+                return Ok(stock);
             }
-
-            var stock = await _stockService.GetStockByProjectAsync(projectNo);
-            
-            if (stock == null || stock.Count == 0)
-                return NotFound(new { message = "Le stock de votre chantier est actuellement vide." });
-
-            return Ok(stock);
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
         }
     }
 }

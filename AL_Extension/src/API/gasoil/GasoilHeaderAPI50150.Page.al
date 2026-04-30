@@ -10,6 +10,9 @@ page 50150 "GasoilHeaderAPI"
     SourceTable = "Entete Fiche Gasoil";
     ODataKeyFields = SystemId;
     DelayedInsert = true;
+    InsertAllowed = true;
+    ModifyAllowed = true;
+    DeleteAllowed = true;
 
     layout
     {
@@ -17,19 +20,62 @@ page 50150 "GasoilHeaderAPI"
         {
             repeater(GroupName)
             {
-                field(jobNo; Rec.Chantier) {Caption = 'Job No'; } // Lien avec le chantier
-                field(id; Rec.SystemId) { Caption = 'Id'; }
-                field(documentNo; Rec."No.") { Caption = 'Document No.'; }
-                field(date; Rec.Journee) { Caption = 'Date'; }
-                field(locationCode; Rec.Cuve) { Caption = 'Location Code'; }
-                field(status; Rec.Statut) { Caption = 'Status'; }
-                field(startIndex; Rec."Index Depart") { Caption = 'Start Index'; }
-                field(endIndex; Rec."Index Final") { Caption = 'End Index'; }
-                field(fileNo; Rec."N° Fiche") { Caption = 'File No.'; }
+                // --- Identifiants ---
+                field(id; Rec.SystemId)
+                {
+                    Caption = 'Id';
+                    Editable = false;
+                }
+                field(documentNo; Rec."No.")
+                {
+                    Caption = 'N° Document';
+                    Editable = false;
+                }
+
+                // --- Chantier ---
+                // jobNo est le pivot de filtrage et de sécurité côté backend (.NET)
+                field(jobNo; Rec.Chantier)
+                {
+                    Caption = 'N° Chantier';
+                    Editable = false;
+                }
+
+                // --- Informations fiche ---
+                field(date; Rec.Journee)
+                {
+                    Caption = 'Date journée';
+                }
+                field(fileNo; Rec."N° Fiche")
+                {
+                    Caption = 'N° Fiche';
+                    Editable = false;
+                }
+                field(locationCode; Rec.Cuve)
+                {
+                    Caption = 'Code cuve';
+                }
+
+                // --- Index cuve ---
+                field(startIndex; Rec."Index Depart")
+                {
+                    Caption = 'Index départ';
+                }
+                field(endIndex; Rec."Index Final")
+                {
+                    Caption = 'Index final';
+                }
+
+                // --- Statut ---
+                // La modification du statut passe exclusivement par l'action /valider
+                field(status; Rec.Statut)
+                {
+                    Caption = 'Statut';
+                    Editable = false;
+                }
 
                 part(gasoilLines; "GasoilLinesAPI")
                 {
-                    Caption = 'Lines';
+                    Caption = 'Lignes';
                     EntityName = 'gasoilLine';
                     EntitySetName = 'gasoilLines';
                     SubPageLink = "Document No." = field("No.");

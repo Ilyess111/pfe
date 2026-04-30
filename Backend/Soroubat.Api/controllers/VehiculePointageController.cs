@@ -2,167 +2,239 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Soroubat.Api.Controllers
 {
-[Authorize]
-[ApiController]
-[Route("api/[controller]")]
-public class VehiculePointageController : ControllerBase
-{
-    private readonly IVehiculeService _vehiculeService;
-
-    // Récupération standardisée du projet depuis le jeton JWT (claim "projectNo")
-    private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? "";
-
-    public VehiculePointageController(IVehiculeService vehiculeService)
+    /// <summary>
+    /// Gestion des pointages véhicules journaliers.
+    /// Toutes les routes sont scopées au projet du chef de chantier extrait du JWT.
+    /// Les lignes sont créées automatiquement par BC à la création de l'en-tête.
+    /// </summary>
+    [Authorize]
+    [ApiController]
+    [Route("api/[controller]")]
+    public class VehiculePointageController : ControllerBase
     {
-        _vehiculeService = vehiculeService;
-    }
+        private readonly IVehiculeService _vehiculeService;
 
-        [HttpGet("my-pointages")]
-        public async Task<IActionResult> GetMyPointages()
+        private string UserProjectNo => User.FindFirst("projectNo")?.Value ?? string.Empty;
+
+        public VehiculePointageController(IVehiculeService vehiculeService)
         {
-            try 
-            {
-                var projectNo = UserProjectNo;
-                if (string.IsNullOrEmpty(projectNo)) return BadRequest("Projet non identifié.");
+            _vehiculeService = vehiculeService;
+        }
 
-                var records = await _vehiculeService.GetHeadersByJobAsync(projectNo);
+        // ─── HEADERS ──────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Retourne tous les pointages du chantier du chef de chantier connecté.
+        /// </summary>
+        [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<VehiculePointageHeader>), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<IEnumerable<VehiculePointageHeader>>> GetAll()
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
+            {
+                var records = await _vehiculeService.GetHeadersByJobAsync(UserProjectNo);
                 return Ok(records);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-        [HttpGet("header/{id}")]
-        public async Task<IActionResult> GetHeader(Guid id)
+        /// <summary>
+        /// Retourne un pointage avec ses lignes.
+        /// </summary>
+        [HttpGet("{id:guid}")]
+        [ProducesResponseType(typeof(VehiculePointageHeader), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<VehiculePointageHeader>> GetById(Guid id)
         {
-            try 
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
             {
                 var header = await _vehiculeService.GetHeaderByIdAsync(id, UserProjectNo);
-                if (header == null) return NotFound();
+
+                if (header == null)
+                    return NotFound(new { message = "Pointage introuvable." });
+
                 return Ok(header);
             }
             catch (UnauthorizedAccessException ex)
             {
-                return Forbid(ex.Message);
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
-    [HttpPost("header")]
-    public async Task<IActionResult> CreateHeader([FromBody] VehiculePointageHeader header)
-    {
-        try 
+        /// <summary>
+        /// Crée un en-tête de pointage. Les lignes sont créées automatiquement par BC.
+        /// </summary>
+        [HttpPost]
+        [ProducesResponseType(typeof(VehiculePointageHeader), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<VehiculePointageHeader>> CreateHeader([FromBody] VehiculePointageHeader header)
         {
-            var projectNo = UserProjectNo;
-            if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
-            header.JobNo = projectNo;
-
-            var result = await _vehiculeService.CreateHeaderAsync(header, projectNo);
-            return Ok(result);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return StatusCode(403, new { message = ex.Message });
-            
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-    }
-
-    [HttpPatch("header/{id}")]
-    public async Task<IActionResult> UpdateHeader(Guid id, [FromBody] VehiculePointageHeader header)
-    {
-        try 
-        {
-            var updated = await _vehiculeService.UpdateHeaderAsync(id, header, UserProjectNo);
-            
-            if (updated == null) return BadRequest(new { message = "Erreur lors de la mise à jour de l'en-tête." });
-            
-            return Ok(updated);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-    }
-
-    [HttpDelete("header/{id}")]
-    public async Task<IActionResult> DeleteHeader(Guid id)
-    {
-        try
-        {
-            var deleted = await _vehiculeService.DeleteHeaderAsync(id, UserProjectNo);
-            if (deleted) return Ok(new { message = "Pointage supprimé avec succès." });
-            return NotFound();
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-    }
-
-    [HttpPost("header/{id}/valider")]
-public async Task<IActionResult> ValiderPointage(Guid id)
-{
-    try
-    {
-        var projectNo = UserProjectNo;
-        if (string.IsNullOrEmpty(projectNo)) return Unauthorized();
-
-        var success = await _vehiculeService.ValiderPointageAsync(id, projectNo);
-
-        if (success) return Ok(new { message = "Pointage validé avec succès." });
-
-        return NotFound(new { message = "Pointage introuvable." });
-    }
-    catch (UnauthorizedAccessException ex)
-    {
-        return StatusCode(403, new { message = ex.Message });
-    }
-    catch (InvalidOperationException ex)
-    {
-        return BadRequest(new { message = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        return StatusCode(500, new { message = ex.Message });
-    }
-}
-
-
-
-
-        [HttpPatch("line/{id}")]
-        public async Task<IActionResult> UpdateLine(Guid id, [FromBody] VehiculePointageLine line)
-        {
-            try 
+            try
             {
-                // On récupère le projet depuis le token pour la sécurité
-                var result = await _vehiculeService.UpdateLineAsync(id, line, UserProjectNo);
-                
-                if (result == null) return BadRequest(new { message = "Erreur lors de la mise à jour de la ligne." });
-                
-                return Ok(result);
+                var created = await _vehiculeService.CreateHeaderAsync(header, UserProjectNo);
+
+                if (created == null)
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        new { message = "Business Central n'a pas retourné le pointage créé." });
+
+                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { message = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
             }
         }
 
+        /// <summary>
+        /// Met à jour les champs modifiables d'un en-tête de pointage.
+        /// </summary>
+        [HttpPatch("{id:guid}")]
+        [ProducesResponseType(typeof(VehiculePointageHeader), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<VehiculePointageHeader>> UpdateHeader(Guid id, [FromBody] VehiculePointageHeader header)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
 
+            try
+            {
+                var updated = await _vehiculeService.UpdateHeaderAsync(id, header, UserProjectNo);
+
+                if (updated == null)
+                    return NotFound(new { message = "Pointage introuvable." });
+
+                return Ok(updated);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Supprime un pointage.
+        /// </summary>
+        [HttpDelete("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteHeader(Guid id)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
+            {
+                var success = await _vehiculeService.DeleteHeaderAsync(id, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Pointage introuvable." });
+
+                return NoContent();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Valide un pointage (Ouvert → Validé).
+        /// </summary>
+        [HttpPost("{id:guid}/valider")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> ValiderPointage(Guid id)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
+            {
+                var success = await _vehiculeService.ValiderPointageAsync(id, UserProjectNo);
+
+                if (!success)
+                    return NotFound(new { message = "Pointage introuvable." });
+
+                return Ok(new { message = "Pointage validé avec succès." });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
+
+        // ─── LIGNES ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Met à jour une ligne de pointage véhicule.
+        /// </summary>
+        [HttpPatch("lines/{id:guid}")]
+        [ProducesResponseType(typeof(VehiculePointageLine), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<VehiculePointageLine>> UpdateLine(Guid id, [FromBody] VehiculePointageLine line)
+        {
+            if (string.IsNullOrEmpty(UserProjectNo))
+                return Unauthorized(new { message = "Token invalide : aucun projet associé." });
+
+            try
+            {
+                var updated = await _vehiculeService.UpdateLineAsync(id, line, UserProjectNo);
+
+                if (updated == null)
+                    return NotFound(new { message = "Ligne de pointage introuvable." });
+
+                return Ok(updated);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
+        }
     }
 }

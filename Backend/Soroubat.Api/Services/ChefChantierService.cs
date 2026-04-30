@@ -1,37 +1,51 @@
-using Newtonsoft.Json;
-using Soroubat.Api.Models;
+using System.Net.Http.Json;
+using Microsoft.Extensions.Logging;
 using Soroubat.Api.Interfaces;
-using System.Net.Http;
-using System.Linq;
-using System.Threading.Tasks;
+using Soroubat.Api.Models;
 
 namespace Soroubat.Api.Services
 {
-    public class ChefChantierService : IChefChantierService
+    /// <summary>
+    /// Service d'accès aux données Chef Chantier dans Business Central.
+    /// Utilisé exclusivement lors de l'authentification pour résoudre le numéro de projet.
+    /// </summary>
+    public class ChefChantierService : BaseService, IChefChantierService
     {
         private readonly HttpClient _httpClient;
+        private readonly ILogger<ChefChantierService> _logger;
 
-        public ChefChantierService(HttpClient httpClient)
+        public ChefChantierService(HttpClient httpClient, ILogger<ChefChantierService> logger)
         {
             _httpClient = httpClient;
+            _logger = logger;
         }
 
-        public async Task<string> GetJobNoByEmailAsync(string email)
+        public async Task<string?> GetJobNoByEmailAsync(string email)
         {
-            // On utilise le chemin relatif vers votre API personnalisée
-            // Notez l'absence de 'Company(...)' car elle est souvent incluse dans la BaseAddress de l'API
-            var response = await _httpClient.GetAsync($"chefsChantier?$filter=email eq '{email}'");
-            
-            if (!response.IsSuccessStatusCode) return null;
+            // Filtre sur l'e-mail ET sur le flag actif — un compte désactivé ne doit pas pouvoir se connecter
+            var url = $"chefsChantier?$filter=email eq '{ODataEncode(email)}' and actif eq true";
+            _logger.LogInformation("[ChefChantier] GET {Url}", url); // ca sert à afficher dans les logs la requête exacte envoyée à BC
 
-            var content = await response.Content.ReadAsStringAsync();
-            
-            // Désérialisation avec votre BCResponse et ChefChantierDto
-            var result = JsonConvert.DeserializeObject<BCResponse<ChefChantierDto>>(content);
+            var response = await _httpClient.GetAsync(url); // httpclient appelle l'url de base concaténée avec le paramétre de la méthode getasync
 
-            // Retourne 'numProjet' (nom défini dans votre fichier AL et DTO)
-            return result?.Value?.FirstOrDefault()?.NumProjet;
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("[ChefChantier] Erreur BC lors de la résolution du projet pour '{Email}' — HTTP {Status}",
+                    email, (int)response.StatusCode);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<BCResponse<ChefChantierDto>>();
+            var chef   = result?.Value?.FirstOrDefault();
+
+            if (chef == null)
+            {
+                _logger.LogWarning("[ChefChantier] Aucun chef de chantier actif trouvé pour '{Email}'.", email);
+                return null;
+            }
+
+            _logger.LogInformation("[ChefChantier] Projet '{ProjectNo}' résolu pour '{Email}'.", chef.NumProjet, email);
+            return chef.NumProjet;
         }
     }
-
 }
