@@ -21,11 +21,16 @@ public async Task<JsonElement> GetLookupDataAsync(
     string numProjet,
     string? additionalFilter = null)
 {
+    // string? projectFilter = entitySetName switch
+    // {
+    //     "projects"     => $"code eq '{numProjet}'",
+    //     "projectTasks" => $"projectNo eq '{numProjet}'",
+    //     _              => null
+    // };
     string? projectFilter = entitySetName switch
     {
-        "projects"     => $"code eq '{numProjet}'",
-        "projectTasks" => $"projectNo eq '{numProjet}'",
-        _              => null
+        "projects"     => $"code eq '{numProjet}'",     
+        "projectTasks" => $"projectNo eq '{numProjet}'", 
     };
 
     var filters = new[] { projectFilter, additionalFilter }

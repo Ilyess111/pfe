@@ -24,12 +24,11 @@ namespace Soroubat.Api.Controllers
             _siteManagementService = siteManagementService;
         }
 
-        // ─── PROJET ──────────────────────────────────────────────────────────────
-
         /// <summary>
         /// Retourne le projet BC assigné au chef de chantier connecté.
         /// </summary>
         [HttpGet("my-project")]
+        // les attributs ProducesResponseType permettent de documenter les réponses possibles de l'endpoint dans Swagger et la documentation OpenAPI
         [ProducesResponseType(typeof(JobDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -53,14 +52,13 @@ namespace Soroubat.Api.Controllers
             }
         }
 
-        // ─── TÂCHES ───────────────────────────────────────────────────────────────
-
         /// <summary>
         /// Retourne la liste des tâches du projet du chef de chantier connecté.
         /// </summary>
         [HttpGet("my-tasks")]
         [ProducesResponseType(typeof(IEnumerable<JobTaskDto>), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        // on n'utilise pas le status code 404 car l'absence de tâches peut être un cas valide (projet sans tâches assignées) 
         public async Task<ActionResult<IEnumerable<JobTaskDto>>> GetMyTasks()
         {
             if (string.IsNullOrEmpty(UserProjectNo))

@@ -22,7 +22,6 @@ namespace Soroubat.Api.Services
             _logger = logger;
         }
 
-        // ─── PROJET ──────────────────────────────────────────────────────────────
 
         public async Task<JobDto> GetAssignedJobAsync(string projectNo)
         {
@@ -39,7 +38,6 @@ namespace Soroubat.Api.Services
                 ?? throw new KeyNotFoundException($"Projet '{projectNo}' introuvable dans Business Central.");
         }
 
-        // ─── TÂCHES ───────────────────────────────────────────────────────────────
 
         public async Task<List<JobTaskDto>> GetTasksByProjectAsync(string projectNo)
         {
@@ -75,16 +73,16 @@ namespace Soroubat.Api.Services
                 throw new ArgumentOutOfRangeException(nameof(progressPct),
                     "Le pourcentage d'avancement doit être compris entre 0 et 100.");
 
-            // 3. Mise à jour : PATCH uniquement le champ d'avancement
+            // 3. Le patch
             var patchBody = new { progressPct };
-            var json = JsonSerializer.Serialize(patchBody);
+            var json = JsonSerializer.Serialize(patchBody); // serialize sert à convertir un objet C# en une chaîne JSON
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var request = new HttpRequestMessage(new HttpMethod("PATCH"), $"jobTasks({taskId})")
             {
                 Content = content
             };
-            request.Headers.TryAddWithoutValidation("If-Match", "*");
+            request.Headers.TryAddWithoutValidation("If-Match", "*"); // ignore les problèmes d'ETag — on force la mise à jour même si la ressource a été modifiée depuis la dernière lecture
 
             _logger.LogInformation("[SiteManagement] PATCH jobTasks({TaskId}) — progressPct: {Progress}", taskId, progressPct);
 
@@ -96,13 +94,7 @@ namespace Soroubat.Api.Services
             return patchResponse.IsSuccessStatusCode;
         }
 
-        // ─── HELPERS PRIVÉS ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Échappe les apostrophes dans les valeurs utilisées dans les filtres OData
-        /// pour prévenir les injections de filtre.
-        /// </summary>
-        private static string ODataEncode(string value) =>
-            value.Replace("'", "''");
+
     }
 }

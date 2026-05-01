@@ -12,17 +12,18 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ─── CONFIGURATION BUSINESS CENTRAL ─────────────────────────────────────────
 
-var bcConfig = builder.Configuration.GetSection("BusinessCentral");
-string rawUrl    = bcConfig.GetValue<string>("BaseUrl")     ?? string.Empty;
-string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV";
+var bcConfig = builder.Configuration.GetSection("BusinessCentral"); // on récupère la section "BusinessCentral" de appsettings.json
+string rawUrl    = bcConfig.GetValue<string>("BaseUrl")     ?? string.Empty; // baseUrl dans appsettings.json
+string companyName = bcConfig.GetValue<string>("CompanyName") ?? "SOROUBATBF-NAV"; // companyName dans appsettings.json
 
 string baseUrl = rawUrl.Split("/api/")[0].Split("/ODataV4")[0].TrimEnd('/');
 
-// API Custom (siteManagement) — utilisée par tous les services métier
+// pointe vers les pages AL de type pagetype = API (exposant les endpoints métier personnalisés) qui utilisent la syntaxe odata 
 string apiUri = $"{baseUrl}/api/soroubat/siteManagement/v1.0/companies(name='{Uri.EscapeDataString(companyName)}')/";
 
-// Services Web OData — utilisés uniquement par LookupService
-string odataUri = $"{baseUrl}/ODataV4/Company('{Uri.EscapeDataString(companyName)}')/";
+// pointe vers les services web odata exposés dans services web dans BC ( non exposés via api)
+// string odataUri = $"{baseUrl}/ODataV4/Company('{Uri.EscapeDataString(companyName)}')/";
+string lookupApiUri = $"{baseUrl}/api/soroubat/lookups/v1.0/companies(name='{Uri.EscapeDataString(companyName)}')/";
 
 // ─── AUTHENTIFICATION JWT ────────────────────────────────────────────────────
 
@@ -107,9 +108,14 @@ void ConfigureBCClient(HttpClient client)
 }
 
 // Client OData — utilisé uniquement par LookupService
-void ConfigureODataClient(HttpClient client)
-{
-    client.BaseAddress = new Uri(odataUri);
+// void ConfigureODataClient(HttpClient client)
+// {
+//     client.BaseAddress = new Uri(odataUri);
+//     client.DefaultRequestHeaders.Accept.Clear();
+//     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+// }
+void ConfigureLookupClient(HttpClient client) {
+    client.BaseAddress = new Uri(lookupApiUri);
     client.DefaultRequestHeaders.Accept.Clear();
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 }
@@ -142,8 +148,11 @@ builder.Services.AddHttpClient<IGasoilService, GasoilService>(ConfigureBCClient)
     .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
 
 // Lookup : OData uniquement
-builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
-    .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
+// builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureODataClient)
+//     .ConfigurePrimaryHttpMessageHandler(CreateBCHandler);
+
+builder.Services.AddHttpClient<ILookupService, LookupService>(ConfigureLookupClient)
+.ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { UseDefaultCredentials = true });
 
 // Services sans HttpClient propre (Scoped)
 builder.Services.AddScoped<IAuthService, AuthService>();

@@ -36,6 +36,7 @@ namespace Soroubat.Api.Services
                 });
             }
 
+            // si la réponse n'est pas vide on tente de parser le message d'erreur BC
             try
             {
                 var bcError = JsonSerializer.Deserialize<BCResponseError>(errorContent);
