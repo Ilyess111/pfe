@@ -2154,13 +2154,21 @@ Table 52049069 "Purchase Request"
         {
             Caption = 'Approval date';
         }
-        field(50217; "Statut"; Enum "Dys Purchase Request status")
-        {
-            Caption = 'Status';
-            // OptionCaption = 'Pending,accepted,refused';
-            // OptionMembers = Ouvert,"Lancé","Partiellement Pris En Charge","Totallement Pris En Charge",Archiver;
+field(50217; "Statut"; Enum "Dys Purchase Request status")
+{
+    Caption = 'Status';
 
-        }
+    trigger OnValidate()
+    var
+        PRCodeunit: Codeunit PRcodeunit;
+    begin
+        // On vérifie si le statut passe à "Lancé" (ou votre valeur d'approbation)
+        // xRec contient la valeur avant la modification (ex: Ouvert)
+        if (Rec.Statut = Rec.Statut::"To Approve") and (xRec.Statut = xRec.Statut::Open) then begin
+            PRCodeunit.NotificationApprobationChefChantier(Rec);
+        end;
+    end;
+}
         field(50299; "Bypass Status Check"; Boolean)
         {
             Caption = 'Bypass Status Check';

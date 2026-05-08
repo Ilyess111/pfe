@@ -652,4 +652,56 @@ codeunit 52048894 PRcodeunit
     //HS
     var
         myInt: Integer;
+
+    procedure NotificationApprobationChefChantier(PR: Record "Purchase Request")
+var
+    mymail: Codeunit "Email Message";
+    Email: Codeunit "Email";
+    ChefChantier: Record "Chef Chantier";
+    UserSetup: Record "User Setup";
+    PRLine: Record "Purchase request Line";
+    RecipientEmail: Text;
+begin
+    // 1. Recherche de l'approbateur dans la table Chef Chantier via le N° de projet
+    ChefChantier.SetRange("Num Projet", PR."Job No.");
+    if not ChefChantier.FindFirst() then
+        exit;
+
+    // 2. Récupération de l'email de l'approbateur (Id Approbateur -> User Setup)
+    if not UserSetup.Get(ChefChantier."Id Approbateur") then
+        exit;
+    
+    RecipientEmail := UserSetup."E-Mail";
+    if RecipientEmail = '' then
+        exit;
+
+    // 3. Construction de l'email avec le tableau des articles
+    mymail.Create(RecipientEmail, 
+                  StrSubstNo('Approbation Requise : Demande d''achat %1', PR."No."), 
+                  '', true);
+    
+    mymail.AppendToBody(StrSubstNo('Bonjour,<br><br>La demande d''achat n° <b>%1</b> pour le projet <b>%2</b> est en attente de votre approbation.<br><br>', PR."No.", PR."Job Description"));
+
+    // Début du tableau (Logique extraite de votre PRCodeunit)
+    mymail.AppendToBody('<table style="border: 1px solid black; border-collapse: collapse; width: 100%;">');
+    mymail.AppendToBody('<tr style="background-color: #f2f2f2;">');
+    mymail.AppendToBody('<th style="border: 1px solid black;">Désignation</th>');
+    mymail.AppendToBody('<th style="border: 1px solid black;">Quantité</th>');
+    mymail.AppendToBody('</tr>');
+
+    PRLine.SetRange("Document No.", PR."No.");
+    if PRLine.FindSet() then begin
+        repeat
+            mymail.AppendToBody('<tr>');
+            mymail.AppendToBody(StrSubstNo('<td style="border: 1px solid black;">%1</td>', PRLine.Description));
+            mymail.AppendToBody(StrSubstNo('<td style="border: 1px solid black; text-align: center;">%1</td>', PRLine.Quantity));
+            mymail.AppendToBody('</tr>');
+        until PRLine.Next() = 0;
+    end;
+    mymail.AppendToBody('</table><br>');
+    mymail.AppendToBody('Cordialement.');
+
+    // 4. Envoi
+    Email.Send(mymail, Enum::"Email Scenario"::Default);
+end;
 }
