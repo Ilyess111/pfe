@@ -15,6 +15,9 @@ namespace Soroubat.Api.Interfaces
         Task<bool> CreateLinesAsync(List<EmpAttendanceLineDto> lines, string projectNo);
         Task<bool> PatchLineAsync(Guid lineId, EmpAttendanceLineDto lineDto, string projectNo);
         Task<bool> DeleteLineAsync(Guid lineId, string projectNo);
+
+        // Dans IEmpAttendanceService.cs
+        Task<bool> MarkPresenceAsync(Guid headerId, string employeeNo, int day, string projectNo);
     
     }
 }

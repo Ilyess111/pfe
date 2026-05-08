@@ -207,5 +207,26 @@ public async Task<EmpAttendanceDto> CreateHeaderAsync(EmpAttendanceDto dto, stri
             var response = await _httpClient.DeleteAsync($"employeeAttendanceLines({lineId})");
             return response.IsSuccessStatusCode;
         }
+
+        public async Task<bool> MarkPresenceAsync(Guid headerId, string employeeNo, int day, string projectNo)
+        {
+            // 1. Récupérer la fiche avec ses lignes
+            var header = await GetHeaderByIdAsync(headerId, projectNo); // Utilise votre logique de vérification de projet [cite: 7]
+            if (header == null) return false;
+
+            // 2. Trouver la ligne du salarié spécifique
+            var line = header.Lines.FirstOrDefault(l => l.EmployeeNo == employeeNo);
+            if (line == null) throw new KeyNotFoundException("Le salarié n'est pas dans cette fiche de pointage.");
+
+            // 3. Mettre à jour le jour sélectionné (Réflexion pour éviter un gros switch)
+            var propertyName = $"Day{day}";
+            var prop = typeof(EmpAttendanceLineDto).GetProperty(propertyName);
+            if (prop == null) throw new ArgumentException("Jour invalide.");
+
+            prop.SetValue(line, "P"); // "P" pour Présent (ou votre code habituel) [cite: 8]
+
+            // 4. Sauvegarder la modification via votre méthode existante
+            return await PatchLineAsync(line.Id, line, projectNo); // Réutilise votre logique PATCH 
+        }
     }
 }

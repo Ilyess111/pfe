@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Soroubat.Api.Interfaces;
 using Soroubat.Api.Models;
+using System.Security.Claims;
 
 namespace Soroubat.Api.Controllers
 {
@@ -11,11 +12,15 @@ namespace Soroubat.Api.Controllers
     public class AttendanceController : ControllerBase
     {
         private readonly IEmpAttendanceService _service;
+        private readonly IEmployeeService _employeeService;
+        private readonly IChefChantierService _chefChantierService;
         private string? UserProjectNo => User.FindFirst("projectNo")?.Value;
 
-        public AttendanceController(IEmpAttendanceService service)
+        public AttendanceController(IEmpAttendanceService service, IEmployeeService employeeService, IChefChantierService chefChantierService)
         {
             _service = service;
+            _employeeService = employeeService;
+            _chefChantierService = chefChantierService;
         }
 
         [HttpGet]
@@ -133,6 +138,52 @@ namespace Soroubat.Api.Controllers
             catch (Exception)
             {
                 return StatusCode(500, new { message = "Une erreur interne est survenue." });
+            }
+        }
+
+
+        [HttpPost("scan-presence")]
+        public async Task<IActionResult> MarkPresenceWithFace([FromBody] FaceAttendanceRequest request)
+        {
+            // 1. Récupérer le projet via le service (comme dans EmployeeController)
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            if (string.IsNullOrEmpty(email)) return Unauthorized("Email manquant");
+            
+            var numProjet = await _chefChantierService.GetJobNoByEmailAsync(email);
+
+            // 2. Préparer la requête de vérification
+            var faceRequest = new FaceVerificationRequest 
+            { 
+                Matricule = request.Matricule, 
+                CapturedImageBase64 = request.CapturedImageBase64 
+            };
+
+            // 3. Vérifier avec le BON numProjet
+            // var isVerified = await _employeeService.VerifyFaceAsync(faceRequest, numProjet);
+            var isVerified = await _employeeService.VerifyFaceAsync(faceRequest, null);
+
+            if (!isVerified)
+            {
+                return Unauthorized(new { message = "Reconnaissance faciale échouée." });
+            }
+
+            // ÉTAPE 2 : Marquage de la présence si identité confirmée
+            try
+            {
+                var success = await _service.MarkPresenceAsync(
+                    request.HeaderId, 
+                    request.Matricule, 
+                    request.Day, 
+                    UserProjectNo);
+
+                if (success)
+                    return Ok(new { message = $"Présence marquée pour le jour {request.Day}" });
+                
+                return BadRequest("Erreur lors de la mise à jour du pointage.");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message });
             }
         }
     }
